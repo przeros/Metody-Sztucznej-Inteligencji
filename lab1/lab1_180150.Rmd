@@ -1,0 +1,584 @@
+---
+title: 'Metody sztucznej inteligencji, edycja II-2021. Informatyka, specjalność: uczenie
+  maszynowe'
+author: 'Piotr Szczuko, Katedra Systemów Multimedialnych. AI Tech: Akademia Innowacyjnych
+  Zastosowań Technologii Cyfrowych'
+date: "1 marca 2021"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: paper
+subtitle: Zapoznanie ze środowiskiem i językiem R. Ocena działania modeli regresyjnych
+  i decyzyjnych.
+---
+
+| Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
+|------------------|------------------|------------------|--------------------|
+| Rośleń             | 180150     | 03.03.2023          | 07.03.2023                  |
+
+# Zadanie 1 - pomiary błędów modelu regresyjnego
+
+Zakładamy hipotetyczny idealny model jakiegoś zjawiska wyrażony zależnością: $$y = log_2(x^4 - 3x^3 - x^2 - 7x + 1)$$
+
+Interesuje nas przedział argumentów x (10, 1000), próbkowany co 1.
+
+## 1. generowanie danych niezaszumionych
+
+```{r}
+x = seq(10, 1000, 1)
+yideal = log2(x^4 - 3*x^3 - x^2 - 7*x + 1)
+
+plot(x, yideal)
+```
+
+## 2. generowanie szumu
+
+Zakładam, że obserwacja jest zaszumiona, tj. pomiar wartości y obarczony jest pewnym błędem o rozkładzie normalnym. Generuję więc szum o następujących parametrach:
+
+średnia: $$\mu = 0$$ odchylenie standardowe:$$\sigma = 2$$ ziarno generatora:$$seed(66)$$
+
+```{r}
+set.seed(66) #poniższe generowanie losowe da zawsze ten sam wynik
+noise = rnorm(n = length(yideal),
+              mean = 0,
+              sd = 2)
+plot(noise, main = "Szum")
+```
+
+## 3. tworzenie danych treningowych
+
+Wygenerowany przeze mnie szum dodaję do wartości funkcji yideal tworząc tym samym funkcję y, posiadającą wartości zaszumione.
+
+```{r}
+y = yideal + noise
+plot(x, y, main = "Zaszumione pomiary y")
+```
+
+## 4. dopasowanie kliku wybranych modeli
+
+Dopasowane zostaną do tych zaszumionych obserwacji modele:
+
+-   liniowy
+
+-   wielomianowe trzeciego stopnia
+
+-   wielomianowe piątego stopnia
+
+-   logarytmiczny
+
+-   tangens
+
+```{r}
+plot(x,
+     y,
+     xlab = "x",
+     ylab = "y",
+     main = "Regresja modeli. Dane treningowe.")
+
+model1 = lm(formula = y ~ x)
+points(
+  x = x,
+  y = predict(model1, data.frame(x)),
+  type = "l",
+  col = "green"
+)
+
+model2 = lm(formula = y ~ I(x^3) + I(x^2) + x)
+points(
+  x = x,
+  y = predict(model2, data.frame(x)),
+  type = "l",
+  col = "red"
+)
+
+model3 = lm(formula = y ~ I(x^5) + I(x^4) + I(x^3) + I(x^2) + x)
+points(
+  x = x,
+  y = predict(model3, data.frame(x)),
+  type = "l",
+  col = "blue"
+)
+
+model4 = lm(formula = y ~ log(x))
+points(
+  x = x,
+  y = predict(model4, data.frame(x)),
+  type = "l",
+  col = "purple"
+)
+
+model5 = lm(formula = y ~ tan(x))
+points(
+  x = x,
+  y = predict(model5, data.frame(x)),
+  type = "l",
+  col = "yellow"
+)
+
+```
+
+## 5. obliczenia błędu treningowego
+
+Wyznaczam wartości błędu treningowego dla każdego z powyższych modeli badając rozbieżność między wartościami funkcji y, a wartościami wyznaczonymi przez model przy użyciu funkcji predict(). Jako miarę błędu przyjąłem błąd średniokwadratowy:
+
+$$\sum_{i=1}^{n} \frac{(y_i - 
+ŷ_i
+)^2}{n}$$
+
+```{r}
+error = y - predict(model1, data.frame(x)) 
+modelError1 = mean(error ^ 2) #błąd średniokwadratowy
+
+error2 = y - predict(model2, data.frame(x)) 
+modelError2 = mean(error2 ^ 2) #błąd średniokwadratowy
+
+error3 = y - predict(model3, data.frame(x))
+modelError3 = mean(error3 ^ 2) #błąd średniokwadratowy
+
+error4 = y - predict(model4, data.frame(x)) 
+modelError4 = mean(error4 ^ 2) #błąd średniokwadratowy
+
+error5 = y - predict(model5, data.frame(x)) 
+modelError5 = mean(error5 ^ 2) #błąd średniokwadratowy
+
+writeLines(sprintf(
+  "Kolejne modele uzyskiwały następujące błędy treningowe: 
+  liniowy: %.2f
+  wielomianowy 3 stopnia: %.2f
+  wielomianowy 5 stopnia: %.2f
+  logarytmiczny: %.2f
+  tangens: %.2f",
+  modelError1,
+  modelError2,
+  modelError3,
+  modelError4,
+  modelError5
+))
+```
+
+Najniższą wartość błędu treningowego osiągnął model logarytmiczny, lecz nie wiele gorzej wypadł pod tym względem model wielomianowy 5 stopnia. Najwyższą wartość błędu treningowego odnotował model oparty na funkcji tangens.
+
+## 6. generowanie nowych danych testowych
+
+Pomiary błędu testowego wykonam generując nowe dane dla tego samego zakresu, według tej samej idealnej charakterystyki. Zasymuluję tutaj większą dokładność pomiaru danych, poprzez zmniejszenie sd - odchylenia standardowego dla szumu.
+
+Generuję więc szum dedykowany funkcji testowej o następujących parametrach:
+
+średnia: $$\mu = 0$$ odchylenie standardowe:$$\sigma = 0.5$$ ziarno generatora:$$seed(66)$$
+
+```{r}
+set.seed(0) #poniższe generowanie losowe da zawsze ten sam wynik
+noisetest = rnorm(n = length(yideal),
+                  mean = 0,
+                  sd = 0.5)
+plot(noisetest, main = "Szum")
+ytest = yideal + noisetest
+plot(x, ytest, main = "Zaszumione pomiary y testowego")
+```
+
+## 7. obliczenia błędów testowych
+
+Wyznaczam wartości błędu testowego dla każdego z powyższych modeli badając rozbieżność między wartościami funkcji y, a wartościami wyznaczonymi przez model przy użyciu funkcji predict(). Jako miarę błędu przyjąłem błąd średniokwadratowy:
+
+$$\sum_{i=1}^{n} \frac{(y_i - 
+ŷ_i
+)^2}{n}$$
+
+```{r}
+error = ytest - predict(model1, data.frame(x))
+modelError1 = mean(error ^ 2) #błąd średniokwadratowy
+
+error2 = ytest - predict(model2, data.frame(x)) 
+modelError2 = mean(error2 ^ 2) #błąd średniokwadratowy
+
+error3 = ytest - predict(model3, data.frame(x))
+modelError3 = mean(error3 ^ 2) #błąd średniokwadratowy
+
+error4 = ytest - predict(model4, data.frame(x)) 
+modelError4 = mean(error4 ^ 2) #błąd średniokwadratowy
+
+error5 = ytest - predict(model5, data.frame(x)) 
+modelError5 = mean(error5 ^ 2) #błąd średniokwadratowy
+
+plot(x,
+     ytest,
+     xlab = "x",
+     ylab = "ytest",
+     main = "Regresja modeli. Dane testowe")
+points(
+  x = x,
+  y = predict(model1, data.frame(x)),
+  type = "l",
+  col = "green"
+)
+points(
+  x = x,
+  y = predict(model2, data.frame(x)),
+  type = "l",
+  col = "red"
+)
+points(
+  x = x,
+  y = predict(model3, data.frame(x)),
+  type = "l",
+  col = "blue"
+)
+points(
+  x = x,
+  y = predict(model4, data.frame(x)),
+  type = "l",
+  col = "purple"
+)
+points(
+  x = x,
+  y = predict(model5, data.frame(x)),
+  type = "l",
+  col = "yellow"
+)
+
+writeLines(sprintf(
+  "Kolejne modele uzyskiwały następujące błędy testowe: 
+  liniowy: %.2f
+  wielomianowy 3 stopnia: %.2f
+  wielomianowy 5 stopnia: %.2f
+  logarytmiczny: %.2f
+  tangens: %.2f",
+  modelError1,
+  modelError2,
+  modelError3,
+  modelError4,
+  modelError5
+))
+```
+
+Podobnie jak dla danych treningowych najniższą wartość błędu testowego osiągnął model logarytmiczny, lecz nie wiele gorzej wypadł pod tym względem model wielomianowy 5 stopnia. Najwyższą wartość błędu testowego odnotował ponownie model oparty na funkcji tangens. Ze względu na mniejsze zaszumienie danych testowych, wartości błędów średniokwadratowych dla użytych modeli (poza tangensem) znaczącą zmalały.
+
+Pomiary błędu testowego dla danych niezaszumionych wykażą jak duży jest *bias* każdego modelu.
+
+```{r}
+
+plot(x, yideal, main = "Niezaszumione pomiary y testowego")
+
+```
+
+```{r}
+error = yideal - predict(model1, data.frame(x)) 
+modelError1 = mean(error ^ 2) #błąd średniokwadratowy
+
+error2 = (yideal - predict(model2, data.frame(x)))
+modelError2 = mean(error2 ^ 2) #błąd średniokwadratowy
+
+error3 = (yideal - predict(model3, data.frame(x)))
+modelError3 = mean(error3 ^ 2) #błąd średniokwadratowy
+
+error4 = (yideal - predict(model4, data.frame(x)))
+modelError4 = mean(error4 ^ 2) #błąd średniokwadratowy
+
+error5 = (yideal - predict(model5, data.frame(x)))
+modelError5 = mean(error5 ^ 2) #błąd średniokwadratowy
+
+plot(x,
+     yideal,
+     xlab = "x",
+     ylab = "yideal",
+     main = "Regresja modeli. Dane niezaszumione")
+points(
+  x = x,
+  y = predict(model1, data.frame(x)),
+  type = "l",
+  col = "green"
+)
+points(
+  x = x,
+  y = predict(model2, data.frame(x)),
+  type = "l",
+  col = "red"
+)
+points(
+  x = x,
+  y = predict(model3, data.frame(x)),
+  type = "l",
+  col = "blue"
+)
+points(
+  x = x,
+  y = predict(model4, data.frame(x)),
+  type = "l",
+  col = "purple"
+)
+points(
+  x = x,
+  y = predict(model5, data.frame(x)),
+  type = "l",
+  col = "yellow"
+)
+
+writeLines(sprintf(
+  "Kolejne modele uzyskiwały następujące błędy testowe: 
+  liniowy: %.2f
+  wielomianowy 3 stopnia: %.2f
+  wielomianowy 5 stopnia: %.2f
+  logarytmiczny: %.2f
+  tangens: %.2f",
+  modelError1,
+  modelError2,
+  modelError3,
+  modelError4,
+  modelError5
+))
+```
+
+Najmniejszy bias (obciążenie) posiada model logarytmiczny, a najbardziej obciążony jest model oparty na funkcji tangens.
+
+# Zadanie 2 - Pomiary błędów modelu klasyfikacyjnego
+
+## Przykład - dane rzeczywiste pomiarowe
+
+W analizie użyty jest zbiór danych Sonar z biblioteki mlbench. Za pierwszym razem wymaga zainstalowania z panelu Packages lub poleceniem install.packages('mlbench').
+
+```{r}
+library(mlbench)
+data(Sonar) #wczytanie zbioru danych do środowiska. Dokumentację wywołać można poleceniem ?Sonar
+summary(Sonar) #proste podsumowanie danych, przedziały kwartylowe
+
+```
+
+```{r}
+boxplot(Sonar, main = "Charakterystyka wartości cech w zbiorze danych Sonar",ylim = c(0, 2))
+
+boxplot(Sonar[Sonar$Class == "R", ], main = "Charakterystyka wartości cech dla klasy R w zbiorze danych Sonar", ylim = c(0, 2))
+
+boxplot(Sonar[Sonar$Class == "M", ], main = "Charakterystyka wartości cech dla klasy M w zbiorze danych Sonar", ylim = c(0, 2))
+
+#między klasami występują nieznaczne różnice w wartościach cech, które powinien wykorzystać klasyfikator
+```
+
+## 1. wybór i wizualizacja cechy, przedziałów kwartylowych, histogramów osobno dla klas M i R
+
+Wartości wybranej przeze mnie cechy dla danych ze zbioru Sonar znajdują się w wektorze V9. Poniżej przedstawiłem charakterystykę danych z wektora V9, biorąc pod uwagę klasę danego elementu oraz posiadaną przez niego wartość dla wybranej przeze mnie cechy.
+
+```{r}
+plot(Sonar$Class, Sonar$V9)
+plot(Sonar$V9, Sonar$Class)
+
+r = Sonar$V9[Sonar$Class == "R"]
+m = Sonar$V9[Sonar$Class == "M"]
+
+hist(r)
+hist(m)
+
+```
+
+Dla elementów klasy 'R' wartości cechy V9 najczęśniej zawierają się w przedziale (0.05, 0.1) Dla elementów klasy 'M' wartości cechy V9 najczęśniej zawierają się w przedziale (0.1, 0.2)
+
+## 2. estymacja średniej i odchylenia standardowego
+
+Liczę wartości średniej oraz odchylenia standardowego osobno dla zbiorów zawierających elementy klasy: 'R' oraz 'M'.
+
+```{r}
+#wyznaczone statystyki wartości, do użycia w modelu gęstości prawdopodobieństwa
+mr = mean(r)
+sdr = sd(r)
+mm = mean(m)
+sdm = sd(m)
+sprintf(
+  "Średnia i odchylenie dla klasy %s równe są: mean %0.4f sd %0.4f",
+  c("R", "M"),
+  c(mr, mm),
+  c(sdr, sdm)
+)
+```
+
+## 3. modelowanie rozkładów
+
+Następnie generuję rozkłady normalne danych, osobno dla klasy 'R' oraz 'M'. Wykorzystuję w tym celu wyznaczone wyżej średnie oraz odchylenia standardowe. Tworzę wykres gęstości prawdopodobieństwa dla tych rozkładów. Wykres pomoże mi przy wyborze optymalnego progu decyzyjnego dla klasyfikatora.
+
+```{r}
+x = seq(0, 0.8, length = 200)
+mteoret = dnorm(x, mean = mm, sd = sdm)
+rteoret = dnorm(x, mean = mr, sd = sdr)
+plot(
+  x,
+  rteoret,
+  ylab = "Funkcja gęstości prawdopodobieństwa dla x",
+  xlab = "Wartość cechy V9",
+  main = "Gęstość prawdopodobieństwa dla klasy R-czarne, M-czerwone",
+  type = "l",
+  col = "black"
+)
+points(x, mteoret, type = "l", col = "red")
+
+```
+
+## 4. wybór progu decyzyjnego
+
+Próg klasyfikatora jaki przyjąłem to V9 = 0.14. Oznacza to, że elementy o wartości cechy V9 poniżej 0.14 zostaną zaklasyfikowane do klasy 'R', a te powyżej 0.14 do klasy 'M'. Próg został oznaczony na wykresie pionową linią. Błędy klasyfikatora zostały oznaczone na wykresach krzyżykami.
+
+## 5. wizualizacja procesu dyskryminacji między klasami
+
+```{r}
+plot(
+  x,
+  rteoret,
+  ylab = "Prawdopodobieństwo",
+  xlab = "Wartość cechy V9",
+  main = "Prawdopodobieństwo dla klasy R-czarne, M-czerwone",
+  type = "l",
+  col = "black"
+)
+points(x, mteoret, type = "l", col = "red")
+
+prog = 0.14
+
+points(c(prog, prog), c(0, max(rteoret, mteoret)), col = "black", type = "l")
+points(x[x > prog], rteoret[x > prog], pch = 4, col = "black")
+points(x[x <= prog], mteoret[x <= prog], pch = 4, col = "red")
+
+#(linia pionowa - próg decyzyjny, krzyżyki - błędy)
+
+```
+
+## 6. pomiar dokładności i błędów
+
+W celu oceny klasyfikatora wyznaczę miary takie jak:
+
+-   True Positive Rate
+
+-   False Negative Rate
+
+-   False Positive Rate
+
+-   True Negative Rate
+
+Pomogą mi one dokonać oceny klasyfikatora.
+
+```{r}
+prog = 0.14
+liczbaR = sum(Sonar$Class == "R") 
+liczbaM = sum(Sonar$Class == "M")
+
+R.T = sum(Sonar$V9[Sonar$Class == "R"] < prog)
+R.TPR = R.T / liczbaR #true positive rate
+
+M.T = sum(Sonar$V9[Sonar$Class == "M"] >= prog)
+M.TPR = M.T / liczbaM #true positive rate
+
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f true positive rate dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.TPR, M.TPR)
+)
+
+R.F = sum(Sonar$V9[Sonar$Class == "R"] >= prog) #czarne krzyżyki
+R.FNR = R.F / liczbaR #false negative rate
+
+M.F = sum(Sonar$V9[Sonar$Class == "M"] < prog) #czerwone krzyżyki
+M.FNR = M.F / liczbaM #false negative rate
+
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f false negative rate dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.FNR, M.FNR)
+)
+
+R.FPR = M.F / liczbaM #false positive rate
+M.FPR = R.F / liczbaR #false positive rate
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f false positive rate dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.FPR, M.FPR)
+)
+
+R.TNR = M.T / liczbaM #true negative rate
+M.TNR = R.T / liczbaR #true negative rate
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f true negative rate dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.TNR, M.TNR)
+)
+```
+
+## 7. implementacja metryk jakości
+
+Dzięki wyznaczonym wyżej miarom obliczę dla mojego klasyfikatora wartości metryk jakości takich jak:
+
+-   Dokładność (Accuracy)
+
+-   Precyzja (Precision)
+
+-   Czułość (Recall)
+
+-   Swoistość (Specificity)
+
+-   $F_1$ (średnia harmoniczna czułości i precyzji)
+
+Na podstawie wartości wyżej wymienionych metryk będę w stanie ocenić jakość mojego klasyfikatora.
+
+```{r}
+Accuracy = (R.TPR + R.TNR) / (R.TPR + R.TNR + R.FPR + R.FNR)
+R.Precision = R.TPR / (R.TPR + R.FPR)
+M.Precision = M.TPR / (M.TPR + M.FPR)
+AVG.Precision = (R.Precision + M.Precision) / 2
+R.Recall = R.TPR / (R.TPR + R.FNR)
+M.Recall = M.TPR / (M.TPR + M.FNR)
+AVG.Recall = (R.Recall + M.Recall) / 2
+R.Specificity = R.TNR / (R.TNR + R.FPR)
+M.Specificity = M.TNR / (M.TNR + M.FPR)
+AVG.Specificity = (R.Specificity + M.Specificity) / 2
+F1 = 2 * (AVG.Precision * AVG.Recall) / (AVG.Precision + AVG.Recall)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f dokładność (accuracy) klasyfiaktora wynosi %0.2f",
+  c(prog),
+  c(Accuracy)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f precyzja (precision) dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.Precision, M.Precision)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f średnia precyzja (precision) wynosi %0.2f",
+  c(prog),
+  c(AVG.Precision)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f czułość (recall) dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.Recall, M.Recall)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f średnia czułość (recall) wynosi %0.2f",
+  c(prog),
+  c(AVG.Recall)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f swoistość (specificity) dla klasy %s wynosi %0.2f",
+  c(prog),
+  c("R", "M"),
+  c(R.Specificity, M.Specificity)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f średnia swoistość (specificity) wynosi %0.2f",
+  c(prog),
+  c(AVG.Specificity)
+)
+sprintf(
+  "Dla progu decyzyjnego V9 = %0.2f uśredniona wartość metryki F1 dla klasyfikatora wynosi %0.2f",
+  c(prog),
+  c(F1)
+)
+```
+
+Otrzymane wartości wyżej wymienionych metryk klasyfikatora są bardzo zbliżone do siebie i oscylują w okolicach 0.7 (70%). Klasyfikator można uznać za stabilny. Jego jakość zdecydowanie nie jest na najwyższym poziomie, ale wynika to z obranej metody jego modelowania i rozkładu danych względem wybranej przeze mnie cechy. Ponadto, taka jakość klasyfikatora w wielu przypadkach może okazać się wystarczająca.
+
+![](images/logotypy%20aitech.jpg)
