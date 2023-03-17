@@ -15,7 +15,7 @@ subtitle: Laboratorium 2: Estymacja modelu średniego, walidacja krzyżowa, sele
 ---
 
 | Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
-|--------------------|------------|---------------------|-----------------------------|
+|------------------|------------------|------------------|--------------------|
 | Rośleń             | 180150     | 10.03.2033          | 17.03.2023                  |
 
 # Wprowadzenie
@@ -330,6 +330,10 @@ library(leaps)
 library(openintro)
 ?gifted
 data(gifted)
+for (i in gifted) {
+  print(i)
+  print("-----------------")
+}
 data = gifted[,-1]
 decision = gifted$score
 summary(data)
@@ -349,17 +353,17 @@ $$R^2 = 1 - \frac{\sum_{i=1}^{n} (y_i - \hat y_i)^2}{
 \sum_{i=1}^{n} (y_i - \bar y)^2
 }$$
 
-$$Adjusted\ R^2 = 1 - \frac{(1 - R^2)(n - 1)}{(n - k - 1)}$$
+$$Adjusted\ R^2 = 1 - \frac{(1 - R^2)(n - 1)}{(n - d - 1)}$$
 
-$y_i$ - wartość rzeczywista
+$y_i$ - oczekiwana odpowiedź występująca
 
-$\hat y_i$ - wartość przewidziana przez model
+$\hat y_i$ - odpowiedź modelu
 
-$\bar y$ - wartość średnia
+$\bar y$ - wartość średnia z danych
 
-$n$ - liczba wszystkich cech
+$n$ - liczba próbek
 
-$k$ - liczba cech użytych przez model
+$d$ - liczba cech użytych przez model
 
 ```{r}
 print("Wartości R^2 dla kolejnych modeli:")
@@ -375,16 +379,14 @@ plot(manyModels, scale = "adjr2")
 thebestmodel = which.max(results$adjr2)
 
 best_model_coefs = coef(manyModels, thebestmodel)
-
-plot(x = gifted$fatheriq, y = c(best_model_coefs[2] * gifted$fatheriq + best_model_coefs[1]), type="l", col="green", ylab = "score")
-points(x = gifted$fatheriq, y = decision, col = "blue")
+print(best_model_coefs)
 ```
 
 ## Wnioski
 
 Wnioski po wykonaniu selekcji cech dla zbioru "gifted" są następujące:
 
--   $R^2$ nie przestaje rosnąć wraz z dodawaniem kolejnych cech.
+-   $R^2$ nie przestaje rosnąć wraz z dodawaniem kolejnych cech do modelu.
 
 -   Adjusted $R^2$ jest największe dla modelu biorącego pod uwagę 6 cech. Cechą, której ten model nie uwzględnia jest "count" czyli wiek, w którym dziecko po raz pierwszy policzyło do 10.
 
