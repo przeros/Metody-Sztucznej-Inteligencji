@@ -17,7 +17,7 @@ subtitle: Zapoznanie ze środowiskiem i językiem R. Ocena działania modeli reg
 ---
 
 | Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
-|------------------|------------------|------------------|--------------------|
+|--------------------|------------|---------------------|-----------------------------|
 | Rośleń             | 180150     | 03.03.2023          | 07.03.2023                  |
 
 # Zadanie 1 - pomiary błędów modelu regresyjnego

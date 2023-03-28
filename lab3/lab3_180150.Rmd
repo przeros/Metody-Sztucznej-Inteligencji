@@ -1,0 +1,1017 @@
+---
+title: 'Metody sztucznej inteligencji, edycja III-2023. Informatyka, specjalność: uczenie
+  maszynowe'
+author: 'Piotr Szczuko, Katedra Systemów Multimedialnych'
+date: "24 marca 2023"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: paper
+  word_document:
+    toc: yes
+subtitle: Laboratorium 3: regresja grzbietowa i selekcja cech metodą lasso. Drzewa decyzyjne i selekcja cech.
+---
+
+| Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
+|----------------|----------------|-----------------|-----------------------|
+| Rośleń             | 180150     | 24.03.2023          | 26.03.2023                  |
+
+# Wprowadzenie
+
+Celem laboratorium jest praktyczne zapoznanie z zagadnieniami zaprezentowanymi na wykładzie: regresją grzbietową i selekcją cech za pomocą metody lasso, drzewami decyzyjnymi i selekcją cech w algorytmach drzew.
+
+Uwaga: zbiór danych Auto, Hitters lub inny w tym zadaniu można wybrać samodzielnie, korzystając z bibliotek mlbench lub ISLR.
+
+# Regresja grzbietowa i metoda lasso do selekcji cech
+
+## Regresja grzbietowa - ridge
+
+Regresja ridge pozwala, za pomocą definiowanego *lambda* $\lambda$ (siły ściągania) minimalizować wartości współczynników modelu liniowego (patrz wykład). *Lambda* poszukiwane może być automatycznie lub z zadanej listy wartości (**lspace** poniżej).
+
+Istotne jest na tym etapie wyczyszczenie tabeli z danymi: usunięcie wierszy z brakującymi wartościami, (w języku R "not available", "na"). Z obsługą danych niedostępnych związany jest szereg funkcji, np. **na.omit()** użyte poniżej oraz argumenty wywołania funkcji, np. **max**(moje_dane, **na.rm = TRUE**), który powoduje **pomijanie** w wyliczeniu max() wartości niedostępnych.
+
+```{r}
+#install.packages("glmnet") #jeśli jeszcze nie ma tej biblioteki należy ją zainstalować
+library (glmnet)#przykładowa biblioteka z implementacją regresji grzbietowej
+library (ISLR) #biblioteka zawiera interesujące zbiory danych, więcej w dokumentacji: polecenie ?ISLR w konsoli
+data = Hitters #zmiana zbioru danych możliwa w tym miejscu
+data = na.omit(data) #czyszczenie wartości pustych w bazie not a number "na"
+decision = data$Salary #zmiana cechy decyzyjnej możliwa w tym miejscu
+
+train.idx = sample(dim(data)[1], dim(data)[1] * 0.6) #rozmiar podzbioru trenującego i testującego ustalany tutaj
+test.idx = (-train.idx) #indeksy ujemne oznaczają pominięcie wiersza tabeli, użycie każdego innego
+lspace = 10 ^ seq(10, -3, length = 60) #zakres poszukiwań optymalnego lambda, siły ściągania wartości parametrów
+
+x = model.matrix(decision~., data)[train.idx, -1] #glmnet wymaga zamknięcia danych w takiej strukturze
+y = decision[train.idx]
+
+manyModels.ridge = glmnet(x, y, alpha = 0, lambda = lspace) #wyliczenie zestawu modeli z różną siłą ściągania. Jeśli lspace nie podane to lambda wybierane przez algorytm automatycznie
+#alpha = 0 oznacza Ridge
+#alpha = 1 oznacza Lasso 
+
+```
+
+Wyliczone zostanie 60 (zależnie od długości wektora lspace) różnych zestawów współczynników modelu liniowego, o regulowanej sile ściągania wartości do zera. Możliwe jest sprawdzenie wartości współczynników wybranego modelu. W przykładzie poniżej - modelu piątego.
+
+```{r}
+coef(manyModels.ridge)[,5] #sprawdzić można wartości parametrów w różnych modelach, podając nr modelu, lambda w nim użyte zależy od przestrzeni poszukiwań zadanej w lspace
+```
+
+Funkcja predict() pozwala dla listy wszystkich modeli przewidzieć wynik "y" dla jeszcze innego, podanego arbitralnie lambda (użyta automatycznie interpolacja między parametrami modelu, które są dla lambda z lspace, w celu uzyskania modelu dla dowolnego lambda).
+
+```{r}
+# powtarzamy tworzenie zestawu modeli, można to pominąć, jeśli z wcześniejszego uruchomienia glmnet (pierwszy blok kodu) otrzymaliśmy modele odpowiednio dobre.
+
+data=na.omit(Hitters) 
+x=model.matrix(data$Salary~.,data )[,-1]
+y=data$Salary
+train=sample(1: nrow(x), nrow(x)*0.6)
+test=(-train)
+y.test=y[test]
+manyModels.ridge = glmnet(x[train,],
+                   y[train],
+                   alpha = 0,
+                   lambda = lspace,
+                   thresh = 1e-12)
+
+# poniższe to zastosowanie predict do wyliczenia modelu dla jednego, ręcznie zadanego lambda.
+
+manyModels.ridge.pred = predict (manyModels.ridge, s = 1, newx = x[test,]) #arbitralnie podane nowe lambda - argument "s = 1"
+mean((manyModels.ridge.pred - y.test) ^ 2) #wyliczenie wartości błędu MSE
+
+```
+
+W celu automatycznego określenia najlepszego lambda (współczynnika ściągającego) zastosowana może być 10-krotna kros walidacja tego podejścia. Zgodnie z metodą CV: podział danych uczących na 10 segmentów, trening na każdych dziewięciu, dziesiąty do określenia MSE (patrz wykres poniżej).
+
+```{r}
+manyModels.CV.ridge = cv.glmnet(x[train, ], y[train], alpha = 0) #alpha = 0 oznacza regresję grzbietową ridge
+plot(manyModels.CV.ridge)
+lambda.min=manyModels.CV.ridge$lambda.min #w wynikowej strukturze jest wartość lambda zapewniającego minimalne błędy
+sprintf("Lambda dające najniższy wynik w kroswalidacji: %.2f. Log(lambda)=%.2f",lambda.min,log(lambda.min))
+```
+
+Funkcją predict pozyskamy wyniki "y" modelu o zadanym lambda.min, który w kros walidacji uzyskiwał najmniejsze MSE. Obliczenia ograniczamy do zbioru testowego. Raportowany jest błąd testowy.
+
+```{r}
+manyModels.ridge.pred.best = predict(manyModels.ridge, s = lambda.min, newx = x[test, ])
+mean((manyModels.ridge.pred.best - y.test) ^ 2)
+```
+
+Do implementacji gotowego modelu konieczna jest znajomość jego współczynników. Procedura jest powtórzona, na całym zbiorze, lambda.min znane z kros walidacji, a funkcja predict(... type="coefficients") zwraca wartości współczynników.
+
+```{r}
+manyModels.ridge.Final = glmnet(x, y, alpha =0) #mamy prawo zastosować teraz całe zbiory, gdyż błędy pomierzone były na zbiorze testowym
+predict(manyModels.ridge.Final, type="coefficients", s=lambda.min)[1:20,] #ostateczny rezultat wyznaczania wartości współczynników modelu liniowego, dla lambda dającego najmniejszy błąd MSE
+
+```
+
+Zauważyć należy, że regresja ridge nie zmniejszyła żadnego ze współczynników do zera, nie realizuje więc selekcji cech.
+
+## Metoda lasso
+
+Składnia i sposób wykorzystania lasso jest identyczny jak w regresji ridge, z wyjątkiem wartości argumentu **alpha = 1**. Poniżej zaproponowany jest pierwszy krok: wczytanie danych, wydzielenie zbioru uczącego, uruchomienie metody lasso, wykreślenie zmian współczynników w zależności od siły ściągania do zera. Dla porównania drugi wykres przedstawia wolniejsze ściąganie w metodzie ridge (bez wymuszonego zerowania).
+
+```{r}
+data = na.omit(Hitters)
+x = model.matrix(data$Salary~., data)[, -1]
+y = data$Salary
+train = sample(1:nrow(x), nrow(x) * 0.6)
+test = (-train)
+y.test = y[test]
+
+manyModels.lasso = glmnet(x[train,], y[train], alpha = 1, lambda = lspace)
+?glmnet
+plot(manyModels.lasso)
+plot(manyModels.ridge) #dla porównania
+```
+
+# Zadanie 1 - Metoda lasso
+
+## 1. kros walidacja funkcją cv.glmnet() na danych treningowych
+
+Cel i sposób obliczeń w metodzie lasso jest bardzo zbliżony do regresji grzbietowej. Różnica polega na tym, że metoda lasso bierze pod uwagę wartość bezwzględną współczynników modelu, a nie ich kwadrat, jak regresja ridge. Poniżej przedstawiłem wzory wykorzystywane przez obie te metody w celu minimalizacji błędu modelu.
+
+$$Ridge: RSS + \lambda\sum_{i=1}^{n} (A_i)^2$$ $$Lasso: RSS + \lambda\sum_{i=1}^{n} |A_i|$$ $RSS$ - błąd kwadratowy
+
+$\lambda$ - parametr siły minimalizacji współczynników
+
+$n$ - liczba współczynników
+
+$A_i$ - współczynnik dla i-tej cechy
+
+Poniżej wykonałem wczytanie danych, wydzielenie zbioru uczącego oraz uruchomienie metody lasso.
+
+```{r}
+library (glmnet)
+library (ISLR) 
+
+data = Hitters
+data = na.omit(Hitters)
+x = model.matrix(data$Salary~., data)[, -1]
+y = data$Salary
+train = sample(1:nrow(x), nrow(x) * 0.6)
+test = (-train)
+y.test = y[test]
+
+manyModels.CV.lasso = cv.glmnet(x[train, ], y[train], alpha = 1)
+plot(manyModels.CV.lasso)
+coef(manyModels.CV.lasso)[,1]
+```
+
+Zerowe wartości współczynników dla większości cech pokazują jak dużą siłę ściągania współczynników do zera posiada metoda lasso w porównaniu do regresji grzbietowej, gdzie większość współczynników miało wartości bardzo małe lecz różne od zera.
+
+## 2. określenie wartości lambda.min z najmniejszym błędem
+
+Zastosowanie 10-krotnej walidacji krzyżowej z wykorzystaniem metody cv.glmnet() umożliwia nam automatyczne określenie najlepszego lambda (współczynnika ściągającego) poprzez podział danych uczących na 10 segmentów, trening na każdych dziewięciu, dziesiąty do określenia MSE. Wykres poniżej prezentuje zależność wartości MSE od wartości lambda, a konkretnie od logarytmu z lambda.
+
+```{r}
+lambda.min=manyModels.CV.lasso$lambda.min
+plot(manyModels.CV.lasso)
+sprintf("Lambda dające najniższy wynik w kroswalidacji: %.2f. Log(lambda)=%.2f",lambda.min,log(lambda.min))
+```
+
+## 3. wyliczenie wartości MSE na danych testowych, przy użyciu modelu lasso z lambda.min
+
+Funkcją predict pozyskam wyniki "y" modelu o zadanym lambda.min, który w kros walidacji uzyskiwał najmniejsze MSE. Obliczenia wykonam na zbiorze testowym i wyliczę błąd testowy MSE.
+
+```{r}
+manyModels.lasso.pred.best = predict(manyModels.CV.lasso, s = lambda.min, newx = x[test, ])
+lasso.test.MSE = mean((manyModels.lasso.pred.best - y.test) ^ 2)
+sprintf("Lasso test MSE: %.2f", lasso.test.MSE)
+```
+
+Wartość testowego MSE dla metody lasso okazała się być znacznie mniejsza od tego, otrzymanego dla regresji grzbietowej.
+
+## 4. sprawdzenie wartości współczynników pozyskanych z najlepszego modelu lasso z lambda.min i podanie tych, które zostały wyzerowane, usunięte z modelu
+
+Do implementacji gotowego modelu konieczna jest znajomość jego współczynników. Kros walidacja jest powtórzona, na całym zbiorze. Wykorzystujemy lambda.min wyznaczone wcześniej, a funkcja predict(... type="coefficients") zwraca wartości współczynników, w tym wypadku naszego najlepszego modelu dla najmniejszego parametru lambda.
+
+```{r}
+manyModels.CV.lasso.Final = cv.glmnet(x, y, alpha = 1)
+predict(manyModels.CV.lasso.Final, type="coefficients", s=lambda.min)[1:20,] #ostateczny rezultat wyznaczania wartości współczynników modelu liniowego, dla lambda dającego najmniejszy błąd MSE
+
+```
+
+Z modelu zostały usunięte następujące cechy:
+
+-   AtBat
+-   HmRun
+-   Runs
+-   RBI
+-   Years
+-   CAtBat
+-   CHits
+-   CHmRun
+-   CWalks
+-   LeagueN
+-   Assists
+-   Errors
+-   NewLeagueN
+
+## 5. porównanie wartości współczynników z metody lasso z regresją ridge, które zostały wyzerowane przez lasso, a które są najmniejsze w ridge
+
+```{r}
+sprintf("Lasso:")
+predict(manyModels.CV.lasso.Final, type="coefficients", s=lambda.min)[1:20,]
+
+sprintf("Ridge:")
+predict(manyModels.ridge.Final, type="coefficients", s=lambda.min)[1:20,]
+
+```
+
+W regresji ridge najmniejsze wartości współczynników odnotowano dla cechy 'CAtBat', a w następnej kolejności dla cech:
+
+-   AtBat
+-   RBI
+-   CHits
+-   CHmRun
+-   CRBI
+-   CWalks
+-   PutOuts
+-   Assists
+
+Znaczna większość tych cech (oprócz CRBI oraz PutOuts) została wyzerowana przez metodę lasso.
+
+Poza cechami wymienionymi wyżej metoda lasso wyeliminowała dodatkowo następujące cechy:
+
+-   HmRun
+-   Runs
+-   Years
+-   LeagueN
+-   Errors
+-   NewLeagueN
+
+Ciekawe jest to, że w metodzie ridge współczynnik cechy LeagueN osiągnął relatywnie dużą wartość równą 53.21.
+
+# Klasyfikator liniowy
+
+Zwizualizujmy przykładowe (zasymulowane) wartości cech x_1 i x_2 klas A i B. Mają pewne przyjęte średnie, wokół których mają losowy rozrzut. Ręczne zaproponowana jest prosta, rozdzielająca przestrzeń na dwie półpłaszczyzny i prowadząca do klasyfikacji obiektów tych dwóch klas - są **liniowo separowalne**.
+
+```{r}
+# średnie wartości x_1 i x_2 w klasach A i B
+x1Aideal = 4
+x2Aideal = 2
+
+x1Bideal = 1
+x2Bideal = 4
+
+# symulowane pomiary 50 obiektów z rozrzutem wokół średnich
+datapointsN = 50
+x1A = rep(x1Aideal, datapointsN) + rnorm(datapointsN, sd = 0.5)
+x2A = rep(x2Aideal, datapointsN) + rnorm(datapointsN, sd = 0.5)
+x1B = rep(x1Bideal, datapointsN) + rnorm(datapointsN, sd = 0.5)
+x2B = rep(x2Bideal, datapointsN) + rnorm(datapointsN, sd = 0.5)
+
+# ręcznie zaproponowane współczynniki klasyfikatora liniowego:
+A0 = -0.5 #współczynniki modelu klasyfikacyjnego
+A1 = 1.35 #współczynniki modelu klasyfikacyjnego
+
+x1M = c(-1,6) #dziedzina rysowania (i tylko rysowania prostej)
+x2M = A0 + x1M*A1
+
+# przygotowanie wykresu
+plot(x1A, x2A, xlim = c(0, 5), ylim = c(0, 5), col = "blue", pch = 15,xlab="x_1",ylab="x_2")
+points(x1B, x2B, col = "red", pch = 16)
+points(x1M, x2M, col = "black",type="l")
+
+```
+
+```{r}
+# sprawdzenie separowalności
+klasaA = A0 + x1A*A1 - x2A
+print("wyniki klasyfikacji obiektów z klasy A (leżących w dodatniej półpłaszczyźnie):")
+#klasaA
+sprintf("%0.1f proc.", sum(klasaA >= 0)/length(klasaA)*100)
+
+print("wyniki klasyfikacji obiektów z klasy B (leżących w ujemnej półpłaszczyźnie):")
+klasaB = A0 + x1B*A1 - x2B
+#klasaB
+sprintf("%0.1f proc.", sum(klasaB < 0)/length(klasaB)*100)
+
+
+```
+
+# Zadanie 2 - Klasyfikator liniowy
+
+## 1. Klasy liniowo separowalne
+
+Generuję wartości cech wzrostu i wagi klas Krasnolud (Dwarf) i Troll. Mają przyjęte średnie, wokół których mają losowy rozrzut. Ręcznie zaproponowałem prostą, rozdzielającą przestrzeń na dwie półpłaszczyzny i prowadzącą do klasyfikacji obiektów tych dwóch klas.
+
+```{r}
+# średnie wartości wzrostu i wagi w klasach Dwarf i Troll
+heightDwarfideal = 125
+weightDwarfideal = heightDwarfideal * 0.5
+
+heightTrollideal = 300
+weightTrollideal = heightTrollideal * 1.25
+
+# symulowane pomiary 200 obiektów z rozrzutem wokół średnich
+set.seed(420)
+datapointsN = 200
+heightDwarf = rep(heightDwarfideal, datapointsN) + rnorm(datapointsN, sd = 30)
+weightDwarf = rep(weightDwarfideal, datapointsN) + rnorm(datapointsN, sd = 20)
+heightTroll = rep(heightTrollideal, datapointsN) + rnorm(datapointsN, sd = 30)
+weightTroll = rep(weightTrollideal, datapointsN) + rnorm(datapointsN, sd = 20)
+
+# ręcznie zaproponowane współczynniki klasyfikatora liniowego:
+A0 = 400
+A1 = -1
+
+heightM = c(-100, 500)
+weightM = A0 + heightM * A1
+
+# przygotowanie wykresu
+plot(heightDwarf, weightDwarf, xlim = c(0, 400), ylim = c(0, 500), col = "brown", pch = 15 ,xlab="height", ylab="weight")
+points(heightTroll, weightTroll, col = "green", pch = 15)
+points(heightM, weightM, col = "black",type="l")
+
+```
+
+Następnie sprawdzamy separowalność klas obliczając jaki procent obiektów zostało poprawnie zaklasyfikowanych.
+
+```{r}
+# sprawdzenie separowalności
+Troll = weightTroll - (A0 + heightTroll * A1)
+print("wyniki klasyfikacji obiektów z klasy Troll (leżących w dodatniej półpłaszczyźnie):")
+#Troll
+sprintf("%0.1f proc.", sum(Troll >= 0)/length(Troll) * 100)
+
+print("wyniki klasyfikacji obiektów z klasy Dwarf (leżących w ujemnej półpłaszczyźnie):")
+Dwarf = weightDwarf - (A0 + heightDwarf * A1)
+#Dwarf
+sprintf("%0.1f proc.", sum(Dwarf < 0)/length(Dwarf) * 100)
+
+
+```
+
+Udało się poprawnie zaklasyfikować 100% obiektów klasy Troll oraz Dwarf. Wniosek: Klasy te są liniowo separowalne
+
+## 2. Klasy nieseparowalne liniowo
+
+Generuję wartości cech ilość danych i czas trwania algorytmu klas BinarySearch i BubbleSort. Mają przyjęte średnie, wokół których mają losowy rozrzut. Ręcznie zaproponowałem prostą, rozdzielającą przestrzeń na dwie półpłaszczyzny i prowadzącą do klasyfikacji obiektów tych dwóch klas.
+
+```{r}
+# średnie wartości ilości danych w klasach BinarySearch i BubbleSort
+dataideal = 15
+
+# symulowane pomiary 200 obiektów z rozrzutem wokół średnich
+set.seed(420)
+datapointsN = 200
+dataBinarySearch = rep(dataideal, datapointsN) + rnorm(datapointsN, sd = 4)
+dataBubbleSort = rep(dataideal, datapointsN) + rnorm(datapointsN, sd = 4)
+
+timeBinarySearch = 40 *log2(dataBinarySearch) + rnorm(datapointsN, sd = 20)
+timeBubbleSort = 0.5 * dataBubbleSort ^ 2 + rnorm(datapointsN, sd = 20)
+
+# ręcznie zaproponowane współczynniki klasyfikatora liniowego:
+A0 = 40
+A1 = 6
+
+dataM = c(-10, 30)
+timeM = A0 + dataM * A1
+
+# przygotowanie wykresu
+plot(dataBinarySearch, timeBinarySearch, xlim = c(0, 25), ylim = c(0, 300), col = "blue", pch = 15 ,xlab="data", ylab="time")
+points(dataBubbleSort, timeBubbleSort, col = "yellow", pch = 15)
+points(dataM, timeM, col = "black",type="l")
+
+```
+
+Następnie sprawdzamy separowalność klas obliczając jaki procent obiektów zostało poprawnie zaklasyfikowanych.
+
+```{r}
+# sprawdzenie separowalności
+BinarySearch = timeBinarySearch - (A0 + dataBinarySearch * A1)
+print("wyniki klasyfikacji obiektów z klasy BinarySearch (leżących w dodatniej półpłaszczyźnie):")
+#Troll
+sprintf("%0.1f proc.", sum(BinarySearch >= 0)/length(BinarySearch) * 100)
+
+print("wyniki klasyfikacji obiektów z klasy BubbleSort (leżących w ujemnej półpłaszczyźnie):")
+BubbleSort = timeBubbleSort - (A0 + dataBubbleSort * A1)
+#Dwarf
+sprintf("%0.1f proc.", sum(BubbleSort < 0)/length(BubbleSort) * 100)
+
+
+```
+
+Udało się poprawnie zaklasyfikować 90.5% obiektów klasy BinarySearch oraz 57.5% obiektów klasy BubbleSort. Wniosek: Klasy te nie są liniowo separowalne
+
+# Drzewo decyzyjne
+
+W przypadkach, które nie są liniowo separowalne zastosować można drzewa decyzyjne. Utworzony zostanie syntetyczny zbiór danych dwóch klas opisanych dwiema cechami x_1 i x_2 i zwizualizowany na płaszczyźnie.
+
+```{r}
+
+# pewien zestaw wartości, następie zaszumiony:
+x1A = c(2,2,2,3,3,4,4,4)
+x2A = c(0,1,1,1.5,2,2,2,2)
+x1B = c(1,1,1,1,2,2,2,2)
+x2B = c(1,1,2,2,3,3,4,4)
+sd = 0.5
+set.seed(9)
+x1A = x1A + rnorm(length(x1A),sd = sd)
+x2A = x2A + rnorm(length(x2A),sd = sd)
+x1B = x1B + rnorm(length(x1B),sd = sd)
+x2B = x2B + rnorm(length(x2B),sd = sd)
+
+# wizualizacja danych:
+plot(x1A, x2A, xlim = c(0, 5), ylim = c(0, 5), col = "blue", pch = 15,xlab="x_1",ylab="x_2")
+points(x1B, x2B, col = "red", pch = 16)
+# warto zwrócić uwagę na proste zależności, wyraźne "regiony" zajmowane przez reprezentantów klas, ale brak separowalności liniowej.
+
+```
+
+```{r}
+# proponowane granice między regionami:
+x_1thres=1.51
+x_2thres=3.05
+
+# wyrysowanie obiektów, granic.
+plot(x1A, x2A, xlim = c(0, 5), ylim = c(0, 5), col = "blue", pch = 15,xlab="x_1",ylab="x_2")
+points(x1B, x2B, col = "red", pch = 16)
+points(c(x_1thres,x_1thres),c(-1,6),type="l")
+points(c(x_1thres,6),c(x_2thres,x_2thres),type="l")
+```
+
+Na podstawie określonych graficznie granic regionów możliwe jest zaimplementowanie prostych reguł klasyfikacji:
+
+```{r}
+# reguły drzewa
+drzewo = function(x_1i,x_2i){
+    if (x_1i < x_1thres) {
+    return("red")
+  } else if (x_2i > x_2thres){
+    return("red")
+  } else {
+    return("blue")
+  }
+}
+
+# iteracja po wszystkich niebieskich
+for (i in 1:length(x1A)) {
+ x_1i = x1A[i]
+ x_2i = x2A[i]
+ print(drzewo(x_1i,x_2i))
+}
+
+# iteracja po wszystkich czerwonych
+for (i in 1:length(x1B)) {
+ x_1i = x1B[i]
+ x_2i = x2B[i]
+ print(drzewo(x_1i,x_2i))
+}
+
+```
+
+# Zadanie 3 - reguły drzewa decyzyjnego
+
+## 1. Implementacja własnego drzewa decyzyjnego
+
+Tworzę zbiór danych trzech klas: A, B oraz C opisanych trzema cechami x_1, x_2 z ziarnem równym seed(227) i wizualizuję go na płaszczyźnie.
+
+```{r}
+
+# pewien zestaw wartości, następie zaszumiony:
+x1A = c(2,2,1,1,1.5,0.5, 0.5, 1)
+x2A = c(0,1,1,1.5,2,1,2,1)
+x1B = c(1.5,1.5,1,2.5,2,2,2,2)
+x2B = c(3.5,3.5,2.5,2.5,3,3,4,4)
+x1C = c(4.25, 3.5, 4, 4, 4.5, 4.5, 4.5, 4.25)
+x2C = c(3, 3, 4, 4, 4.5, 4.5, 4.5, 4.25)
+sd = 0.5
+set.seed(127)
+x1A = x1A + rnorm(length(x1A),sd = sd)
+x2A = x2A + rnorm(length(x2A),sd = sd)
+x1B = x1B + rnorm(length(x1B),sd = sd)
+x1C = x1C + rnorm(length(x1C),sd = sd)
+x2C = x2C + rnorm(length(x2C),sd = sd)
+
+# wizualizacja danych:
+plot(x1A, x2A, xlim = c(0, 6), ylim = c(0, 6), col = "blue", pch = 15,xlab="x_1",ylab="x_2")
+points(x1B, x2B, col = "red", pch = 16)
+points(x1C, x2C, col = "green", pch = 16)
+
+```
+
+```{r}
+# proponowane granice między regionami:
+x_1thres=2.8
+x_2thres=2.2
+
+# wyrysowanie obiektów, granic.
+plot(x1A, x2A, xlim = c(0, 6), ylim = c(0, 6), col = "blue", pch = 15,xlab="x_1",ylab="x_2")
+points(x1B, x2B, col = "red", pch = 16)
+points(x1C, x2C, col = "green", pch = 16)
+points(c(x_1thres,x_1thres),c(-1,7),type="l")
+points(c(-1,x_1thres),c(x_2thres,x_2thres),type="l")
+```
+
+Na podstawie określonych graficznie granic regionów zaimplementuję proste reguły klasyfikacji:
+
+```{r}
+# reguły drzewa
+drzewo = function(x_1i,x_2i){
+    if (x_1i > x_1thres) {
+    return("green")
+  } else if (x_2i > x_2thres){
+    return("red")
+  } else {
+    return("blue")
+  }
+}
+
+# iteracja po wszystkich niebieskich
+for (i in 1:length(x1A)) {
+ x_1i = x1A[i]
+ x_2i = x2A[i]
+ print(drzewo(x_1i,x_2i))
+}
+
+# iteracja po wszystkich czerwonych
+for (i in 1:length(x1B)) {
+ x_1i = x1B[i]
+ x_2i = x2B[i]
+ print(drzewo(x_1i,x_2i))
+}
+
+# iteracja po wszystkich zielonych
+for (i in 1:length(x1C)) {
+ x_1i = x1C[i]
+ x_2i = x2C[i]
+ print(drzewo(x_1i,x_2i))
+}
+
+```
+
+Udało się zaimplementować drzewo decyzyjne klasyfikujące poprawnie 100% obiektów należących do klas A, B oraz C
+
+## Budowa drzewa na podstawie wartości zysku informacyjnego
+
+Drzewo przedstawione powyżej, tworzone ręcznie, nie wykorzystuje żadnej wiedzy o **przydatności cech**. W przypadku wielu cech otrzymuje się drzewa zbyt rozbudowane, zwykle charakteryzujące się przetrenowaniem! Konieczne jest ustalenie, które cechy są najbardziej przydatne w celu:
+
+1.  optymalizacji kolejności testowania wartości cech w kolejnych rozgałęzieniach drzewa
+2.  usuwania ostatnich rozgałęzień, dla cech najmniej przydatnych.
+
+# Zadanie 4 - wyznaczanie zysku informacyjnego
+
+Tworzę pewien wektor danych, np. czy dany student zdał egzamin z MSI. Entropia (zwykła) związana jest z nieuporządkowaniem danych, trudnością przewidywania wyniku. Entropia zależy od prawdopodobieństw wystąpienia zdarzeń elementarnych. Dwa przypadki poniżej różnią się tymi prawdopodobieństwami.
+
+```{r}
+MSIPassed <- c("passed", "failed", "failed", "passed", "passed", "failed", "failed", "passed", "passed", "failed", "passed", "failed", "passed", "passed", "failed", "failed", "passed", "failed", "passed", "passed")
+probabilities = proportions(table(MSIPassed))
+MSIPassed.H=-sum(probabilities*log2(probabilities))
+probabilities
+sprintf("Entropia decyzji H(MSIPassed) = %.3f",MSIPassed.H)
+```
+
+Entropia warunkowa zależy od prawdopodobieństwa wystąpienia wartości wybranej cechy opisującej oraz od entropii dla wszystkich przypadków o danej wartości tej cechy.
+
+$$H(Y | X) = \Sigma_{j=1...d} P(X = v_j) H(Y | X = v_j)$$
+
+Do poprzedniego przykładu dodałem nową cechę opisująca, informacja o tym czy student zdał egzamin z AKO, która może prowadzić do zmniejszenia entropii decyzji.
+
+```{r}
+H = function(inputs){
+  probabilities <- table(inputs)/length(inputs) 
+  H=-sum(probabilities*log2(probabilities))
+  return(H)
+}
+
+AKOPassed <- c("passed", "failed", "failed", "failed", "passed", "failed", "failed", "passed", "passed", "failed", "passed", "failed", "passed", "passed", "failed", "failed", "failed", "failed", "failed", "passed")
+AKOPassed.H = H(AKOPassed)
+
+MSIPassed.AKOPassed = MSIPassed[AKOPassed=="passed"]
+MSIPassed.AKOFailed = MSIPassed[AKOPassed=="failed"]
+
+MSIPassed.Hcondit.AKOPassed = H(MSIPassed.AKOPassed) * proportions(table(AKOPassed))["passed"] + 
+    H(MSIPassed.AKOFailed) * proportions(table(AKOPassed))["failed"]
+
+```
+
+Zysk informacyjny, to różnica entropii decyzji i entropii warunkowej związanej z cechą opisującą X: $$IG(Y|X)=H(Y)-H(Y|X)$$
+
+Gdy jest wiele cech opisujących X_i to różnią się one wartościami zysków informacyjnych IG(X_i). Te cechy o najwyższych zyskach powinny być wybrane na pierwsze rozgałęzienia w drzewie decyzyjnym.
+
+```{r}
+
+MSIPassed.IG.AKOPassed = MSIPassed.H - MSIPassed.Hcondit.AKOPassed
+sprintf("Entropia decyzji H(MSIPassed) = %.3f",MSIPassed.H)
+sprintf("Entropia decyzji H(MSIPassed|AKOPassed) = %.3f",MSIPassed.Hcondit.AKOPassed)
+sprintf("Zysk informacyjny IG(MSIPassed|AKOPassed) = %.3f",MSIPassed.IG.AKOPassed)
+
+```
+
+Wnioski: Uzyskaliśmy zysk informacyjny na poziomie 0.506 co jest bardzo dużą wartością. Wynika to z względnie dużej korelacji pomiędzy wynikami studentów z egzaminu z AKO oraz z MSI. Dzięki temu na podstawie zdawalności egzaminów z AKO jesteśmy w stanie dość skutecznie określić zdawalność z MSI.
+
+# Przykłady bibliotek do drzew decyzyjnych w języku R
+
+## Biblioteka rpart
+
+Funkcja rpart() wyznacza drzewa decyzyjne: klasyfikacyjne (przykład poniżej dla danych iris i przewidywania cechy decyzyjnej Species) oraz regresyjne (przykład poniżej dla danych Hitters i przewidywania średniej wartości Salary).
+
+```{r}
+library(rpart)
+library(rpart.plot)
+data(iris)
+data = iris
+tree<- rpart(Species~., data = data)#, method = 'class')
+rpart.plot(tree)
+
+library(ISLR)
+data(Hitters)
+data = Hitters
+tree<- rpart(Salary~., data = data)#, method = 'class')
+rpart.plot(tree)
+
+```
+
+Dla drzew zachodzi czasami potrzeba ręcznej **dyskretyzacji** danych, w poniższym przypadku cechy decyzyjnej, np. zużycia paliwa, dla którego próg rozgraniczający między decyzją "good" i "bad" ustalić można na podstawie średniej, mediany lub ręcznie.
+
+```{r}
+t = median(Auto$mpg)#spróbować mean, median oraz progi podane ręcznie: 18, 19, 20, 21, 22, ...
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+#summary(tree)
+```
+
+Funkcja prune.rpart() upraszcza gotowe drzewo decyzyjne.
+
+```{r}
+treep = prune.rpart(tree, cp = 0.02) #cp oznacza stopień złożoności drzewa, im mniejsze, tym mniej upraszczane. cp=1 to uproszczenie do samego pnia.
+rpart.plot(treep)
+
+
+
+```
+
+# Zadanie 5 - testowanie drzewa pełnego i uproszczonego
+
+## 1. Eksperymenty z wartością t
+
+Porównam złożoność drzew uzyskanych dla różnych wartości t oraz cechy jakie biorą pod uwagę najbardziej w procesie podejmowania decyzji, progu rozgraniczającego wynikową wartość liczbową mpg na dwie klasy "good" i "bad". Jako wartości t w porównywalnych modelach wybrałem: średnią mpg, medianę mpg, 30mpg, 25mpg, 20mpg, 18mpg. Wyznaczę również macierze pomyłek dla każdego z modeli, aby zweryfikować ich skuteczność.
+
+```{r}
+library(ISLR)
+library(rpart)
+library(rpart.plot)
+t = mean(Auto$mpg)
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki_srednia=predict(tree,Auto,type = "class")
+table(wyniki_srednia,d)
+
+t = median(Auto$mpg)
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki_mediana=predict(tree,Auto,type = "class")
+table(wyniki_mediana,d)
+
+t = 30
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki30=predict(tree,Auto,type = "class")
+table(wyniki30,d)
+
+t = 25
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki25=predict(tree,Auto,type = "class")
+table(wyniki25,d)
+
+t = 20
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki20=predict(tree,Auto,type = "class")
+table(wyniki20,d)
+
+t = 18
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki18=predict(tree,Auto,type = "class")
+table(wyniki18,d)
+```
+
+Najbardziej złożone okazały się modele drzew dla t przyjętego jako wartość średnia, mediana. Składają się one z 6 rozgałęzień. Najbardziej uproszczone okazały się modele dla t = 25 oraz t = 20. Składają się one tylko z 4 rozgałęzień. Jeżeli chodzi o dobór najbardziej decyzyjnych cech to większość, bo aż 3 na 6 modeli uznała displacement czyli pojemność silnika za cechę najbardziej kluczową. Jednak wybory pozostałych modeli były inne: - model t = 30 - liczbę koni mechanicznych (horsepower) - model t = 25 - liczbę cylindrów (cylinders) - model t = 18 - ciężar samochodu (weight)
+
+Co ciekawe modelem, który według macierzy pomyłek osiągnął najmniejszą liczbę błędów false negative oraz false positive jest właśnie model z t = 18.
+
+Z ludzkiego punktu widzenia najbardziej decyzyjnym parametrem jest według mnie pojemność silnika jednak zarówno ciężar samochodu, liczba koni mechanicznych jak i liczba cylindrów mają wpływ na spalanie paliwa przez samochód.
+
+## 2. Eksperymenty z wartością cp dla funkcji prune.rpart()
+
+Dokonam porównania drzewa oryginalnego z dwoma drzewami przyciętymi o cp równym kolejno 0.02 oraz 0.05.
+
+```{r}
+library(ISLR)
+library(rpart)
+library(rpart.plot)
+?Auto
+t = median(Auto$mpg)
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+tree<- rpart(d~., data = data, method = 'class')
+rpart.plot(tree)
+wyniki=predict(tree,Auto,type = "class")
+
+tree_pruned002 = prune.rpart(tree, cp = 0.02)
+wyniki_pruned002=predict(tree_pruned002,Auto,type = "class")
+rpart.plot(tree_pruned002)
+
+tree_pruned005 = prune.rpart(tree, cp = 0.05)
+wyniki_pruned005=predict(tree_pruned005,Auto,type = "class")
+rpart.plot(tree_pruned005)
+
+table(wyniki,d)
+table(wyniki_pruned002,d)
+table(wyniki_pruned005,d)
+```
+
+Drzewo przycięte cp = 0.02: przycięcie dwóch rozgałęzień - w przypadku gdy horsepower \< 97 model nie sprawdza już rocznika samochodu oraz czy pojemność jest mniejsza od 118cu tylko od razu przypisuję klasę "bad". Przycięty model uznał, że informacja o roczniku samochodu nie daje wystarczającego zysku informacyjnego. Z ludzkiego punktu widzenia zgodziłbym się, że na podstawie rocznika samochodu ciężko miarodajnie wywnioskować jego spalanie. Model ten posiada łącznie 25 błędów typu false positive lub false negative więc jest mniej dokładny niż model oryginalny.
+
+Drzewo przycięte cp = 0.05: przycięcie wszystkich rozgałęzień poza sprawdzeniem pojemności silnika. Wszystkie obiekty o pojemności mniejszej niż 191cu są klasyfikowane jako "bad", a pozostałe jako "good". Model ten posiada łącznie 38 błędów typu false positive lub false negative więc jest najmniej dokładny.
+
+Wnioski: Analizując macierze pomyłek trzech modeli powyżej najbardziej dokładny jest model oryginalny bez przycinania.
+
+## 3. Formalny proces treningu i testowania dla drzewa pełnego i uproszczonego
+
+Teraz wykonam formalny proces treningu i testowania dla drzewa pełnego i uproszczonego. Dokonam podziału danych na zbiór treningowy oraz testowy. Następnie wytrenuję model na zbiorze treningowym, dokonam pewnego przycięcia dla modelu uproszczonego. Na końcu przetestuję jakość drzewa pełnego oraz uproszczonego na zbiorze testowym i przedstawię wyniki w formie macierzy pomyłek oraz wyliczonych metryk jakości takich jak: Dokładność, Precyzja, Czułość, Swoistość, wskaźnik F1.
+
+```{r}
+library(ISLR)
+library(rpart)
+library(rpart.plot)
+set.seed(25)
+t = median(Auto$mpg)
+train.size = 0.8
+d = rep("bad",dim(Auto)[1])
+d[Auto$mpg<t] = "good"
+data = Auto[,c(-1,-9)]
+train.idx = sample(dim(Auto)[1], dim(Auto)[1] * train.size)
+train = data[train.idx,]
+test = data[-train.idx,]
+
+?predict.rpart
+tree <- rpart(d~., data = data, subset = train.idx, method = 'class')
+wyniki = predict(tree, newdata = test, type = "class")
+rpart.plot(tree)
+
+tree_pruned002 = prune.rpart(tree, cp = 0.02)
+wyniki_pruned002=predict(tree_pruned002, newdata = test, type = "class")
+rpart.plot(tree_pruned002)
+
+print(train)
+print(test)
+
+liczba_good = sum(d[-train.idx] == "good") 
+liczba_bad = sum(d[-train.idx] == "bad")
+liczba_all = length(d[-train.idx])
+
+# drzewo pełne
+
+good_true = sum(d[-train.idx][wyniki == "good"] == "good")
+good_true_positive = good_true / liczba_good #true positive rate
+
+bad_true = sum(d[-train.idx][wyniki == "bad"] == "bad")
+bad_true_negative = bad_true / liczba_bad #true negative rate
+
+good_false = sum(d[-train.idx][wyniki == "good"] == "bad")
+good_false_positive = good_false / liczba_bad #false positive rate
+
+bad_false = sum(d[-train.idx][wyniki == "bad"] == "good")
+bad_false_negative = bad_false / liczba_good #false negative rate
+
+writeLines("\nWyniki dla drzewa pełnego:")
+table(wyniki, d[-train.idx])
+sprintf(
+  "True positive rate wynosi %0.2f",
+  c(good_true_positive)
+)
+sprintf(
+  "True negative rate wynosi %0.2f",
+  c(bad_true_negative)
+)
+sprintf(
+  "False positive rate wynosi %0.2f",
+  c(good_false_positive)
+)
+sprintf(
+  "False negative rate wynosi %0.2f",
+  c(bad_false_negative)
+)
+
+Accuracy = (good_true + bad_true) / liczba_all
+Precision = good_true / (good_true + good_false)
+Recall = good_true / (good_true + bad_false)
+Specificity = bad_true / (bad_true + good_false)
+F1 = 2 * (Precision * Recall) / (Precision + Recall)
+sprintf(
+  "dokładność (accuracy) klasyfiaktora wynosi %0.2f",
+  c(Accuracy)
+)
+sprintf(
+  "precyzja (precision) klasyfiaktora wynosi %0.2f",
+  c(Precision)
+)
+sprintf(
+  "czułość (recall) klasyfiaktora wynosi %0.2f",
+  c(Recall)
+)
+sprintf(
+  "swoistość (specificity) klasyfiaktora wynosi %0.2f",
+  c(Specificity)
+)
+sprintf(
+  "wskaźnik F1 dla klasyfikatora wynosi %0.2f",
+  c(F1)
+)
+
+# drzewo przycięte
+
+good_true_pruned = sum(d[-train.idx][wyniki_pruned002 == "good"] == "good")
+good_true_positive_pruned = good_true_pruned / liczba_good #true positive rate
+
+bad_true_pruned = sum(d[-train.idx][wyniki_pruned002 == "bad"] == "bad")
+bad_true_negative_pruned = bad_true_pruned / liczba_bad #true negative rate
+
+good_false_pruned = sum(d[-train.idx][wyniki_pruned002 == "good"] == "bad")
+good_false_positive_pruned = good_false_pruned / liczba_bad #false positive rate
+
+bad_false_pruned = sum(d[-train.idx][wyniki_pruned002 == "bad"] == "good")
+bad_false_negative_pruned = bad_false_pruned / liczba_good #false negative rate
+
+writeLines("\nWyniki dla drzewa przyciętego:")
+table(wyniki_pruned002, d[-train.idx])
+sprintf(
+  "True positive rate wynosi %0.2f",
+  c(good_true_positive_pruned)
+)
+sprintf(
+  "True negative rate wynosi %0.2f",
+  c(bad_true_negative_pruned)
+)
+sprintf(
+  "False positive rate wynosi %0.2f",
+  c(good_false_positive_pruned)
+)
+sprintf(
+  "False negative rate wynosi %0.2f",
+  c(bad_false_negative_pruned)
+)
+
+Accuracy_pruned = (good_true_pruned + bad_true_pruned) / liczba_all
+Precision_pruned = good_true_pruned / (good_true_pruned + good_false_pruned)
+Recall_pruned = good_true_pruned / (good_true_pruned + bad_false_pruned)
+Specificity_pruned = bad_true_pruned / (bad_true_pruned + good_false_pruned)
+F1_pruned = 2 * (Precision_pruned * Recall_pruned) / (Precision_pruned + Recall_pruned)
+sprintf(
+  "dokładność (accuracy) klasyfiaktora wynosi %0.2f",
+  c(Accuracy_pruned)
+)
+sprintf(
+  "precyzja (precision) klasyfiaktora wynosi %0.2f",
+  c(Precision_pruned)
+)
+sprintf(
+  "czułość (recall) klasyfiaktora wynosi %0.2f",
+  c(Recall_pruned)
+)
+sprintf(
+  "swoistość (specificity) klasyfiaktora wynosi %0.2f",
+  c(Specificity_pruned)
+)
+sprintf(
+  "wskaźnik F1 dla klasyfikatora wynosi %0.2f",
+  c(F1_pruned)
+)
+
+```
+
+Zarówno dla drzewa pełnego, jak i przyciętego metryki jakościowe osiągnęły bardzo wysokie wartości. Drzewo przycięte jest nieco mniej dokładne, ale patrząc przez pryzmat uproszczenia jakie oferuje, wyniki są bardzo zadowalające.
+
+## Biblioteka tree
+
+Biblioteka tree posiada przydatne funkcje walidacji krzyżowej drzew.
+
+```{r}
+#install.packages("tree")
+library(tree)
+
+data(iris)
+# budowa drzewa
+tree<- tree(Species~., data = iris)
+
+# kroswalidacja serii drzew będących wynikami automatycznego upraszczania drzewa oryginalnego
+set.seed(6)
+wyniki.cv = cv.tree(tree,FUN=prune.misclass)
+#wyniki.cv
+sprintf("kolejne drzewa miały liczbę liści:")
+sprintf("%d",wyniki.cv$size)
+sprintf("kolejne drzewa miały błąd kros walidacji:")
+sprintf("%d",wyniki.cv$dev)
+sprintf("najmniejsze drzewo o najmniejszym błędzie to drzewo o 4 liściach")
+
+```
+
+Po wytypowaniu optymalnego stopnia upraszczania drzewa, podać należy do funkcji prune.misclass() parametr best, który określa liczbę docelowych liści.
+
+```{r}
+tree.pruned=prune.misclass(tree, best = 4)
+plot(tree.pruned)
+text(tree.pruned, pretty = 0)
+
+wyniki=predict(tree,iris,type = "class")
+table(wyniki, iris$Species)
+
+wyniki_p=predict(tree.pruned,iris,type = "class")
+table(wyniki_p, iris$Species)
+```
+
+# Zadanie 6 - dostosowanie stopnia złożoności drzewa (liczby liści)
+
+Teraz wykonam formalny proces treningu i testowania dla drzewa pełnego i uproszczonego z wykorzystaniem funkcji tree(). Dokonam podziału danych na zbiór treningowy oraz testowy. Następnie wytrenuję model na zbiorze treningowym, dokonam pewnych przycięć dla modeli uproszczonych. Na końcu przetestuję jakość drzewa pełnego oraz drzew uproszczonych na zbiorze testowym i przedstawię wyniki w formie macierzy pomyłek.
+
+```{r}
+library(tree)
+set.seed(6)
+data(iris)
+train.size = 0.8
+train.idx = sample(dim(iris)[1], dim(iris)[1] * train.size)
+train = iris[train.idx,]
+test = iris[-train.idx,]
+print(train)
+print(test)
+
+tree<- tree(Species~., data = iris, subset = train.idx)
+
+wyniki.cv = cv.tree(tree, FUN = prune.misclass)
+
+sprintf("kolejne drzewa miały liczbę liści:")
+sprintf("%d",wyniki.cv$size)
+sprintf("kolejne drzewa miały błąd kros walidacji:")
+sprintf("%d",wyniki.cv$dev)
+sprintf("najmniejsze drzewo o najmniejszym błędzie to drzewo o 3 liściach")
+
+plot(tree)
+text(tree, pretty = 0)
+wyniki_pełne_train = predict(tree, newdata = train, type = "class")
+table(wyniki_pełne_train, iris$Species[train.idx])
+
+wyniki_pełne_test = predict(tree, newdata = test, type = "class")
+table(wyniki_pełne_test, iris$Species[-train.idx])
+
+# drzewo przycięte
+
+tree.pruned=prune.misclass(tree, best = 3)
+plot(tree.pruned)
+text(tree.pruned, pretty = 0)
+
+wyniki_prunned_train = predict(tree.pruned, newdata = train, type = "class")
+table(wyniki_prunned_train, iris$Species[train.idx])
+
+wyniki_prunned_test = predict(tree.pruned, newdata = test, type = "class")
+table(wyniki_prunned_test, iris$Species[-train.idx])
+
+# drzewo mocno przycięte
+
+tree.pruned_hard=prune.misclass(tree, best = 2)
+plot(tree.pruned_hard)
+text(tree.pruned_hard, pretty = 0)
+
+wyniki_pruned_hard_train = predict(tree.pruned_hard, newdata = train, type = "class")
+table(wyniki_pruned_hard_train, iris$Species[train.idx])
+
+wyniki_pruned_hard_test = predict(tree.pruned_hard, newdata = test, type = "class")
+table(wyniki_pruned_hard_test, iris$Species[-train.idx])
+```
+
+Drzewo przycięte o 3 liściach osiągnęło ten sam poziom błędów co pełne drzewo o 4 liściach. Drzewo mocno przycięte składające się z 2 liści odnotowuje już bardzo dużą liczbę błędów.
+
+Porównując błędy treningowe do testowych w powyższych modelach, można zaobserwować dość duży błąd testowy względem błędu treningowego. Dla drzew o 4 oraz 3 liściach w zbiorze testowym odnotowano tą samą liczbę błędów co w zbiorze treningowym, mimo że zbiór testowy ma 4 razy mniej próbek. W przypadku drzewa o 2 liściach, błędów testowych było około 3 razy mniej niż treningowych co wciąż sprawia, że procent błędów treningowych był mniejszy.
+
+Wnioski: Prawdopodobnie model jest zbyt dopasowany do danych treningowych. Aby zwiększyć jakość modelu należałoby zwiększyć liczbę danych treningowych, aby model miał więcej informacji do nauczenia się.
+
+------------------------------------------------------------------------

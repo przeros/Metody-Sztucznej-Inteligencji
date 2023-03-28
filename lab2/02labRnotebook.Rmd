@@ -15,8 +15,8 @@ subtitle: Laboratorium 2: Estymacja modelu średniego, walidacja krzyżowa, sele
 ---
 
 | Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
-|--------------------|------------|---------------------|-----------------------------|
-| Rośleń             | 180150     | 10.03.2033          | 17.03.2023                  |
+|----------------|----------------|-----------------|-----------------------|
+| Rośleń             | 180150     | 10.03.2023          | 17.03.2023                  |
 
 # Wprowadzenie
 
