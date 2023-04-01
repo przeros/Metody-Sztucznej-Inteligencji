@@ -15,7 +15,7 @@ subtitle: Laboratorium 3: regresja grzbietowa i selekcja cech metodą lasso. Drz
 ---
 
 | Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
-|----------------|----------------|-----------------|-----------------------|
+|--------------------|------------|---------------------|-----------------------------|
 | Rośleń             | 180150     | 24.03.2023          | 26.03.2023                  |
 
 # Wprowadzenie

@@ -1,0 +1,338 @@
+---
+title: "Metody sztucznej inteligencji, edycja II-2021. Informatyka, specjalność: uczenie maszynowe"
+author: "Piotr Szczuko, Katedra Systemów Multimedialnych"
+date: "31 marca 2023"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: paper
+subtitle: "Laboratorium 4 Zbiory przybliżone, cz. 1."
+---
+
+| Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
+|----------------|----------------|----------------|----------------------|
+| Rośleń             | 180150     | 31.03.2023          | 01.04.2023                  |
+
+# Wprowadzenie
+
+Celem laboratorium jest zapoznanie się i praktyczne wykorzystanie podstawowych operacji w teorii zbiorów przybliżonych: dyskretyzacji danych, wyznaczania zbiorów obiektów tożsamych, tworzenie reduktu oraz generowanie i zastosowanie reguł.
+
+# Tożsamość obiektów względem podzbioru cech
+
+Podstawowym pojęciem w teorii zbiorów przybliżonych jest tożsamość obiektów (ang. indiscernibility).
+
+Poniższe przykłady prezentują sposób przygotowania danych do analizy metodą zbiorów przybliżonych i wyznaczania zbiorów obiektów tożsamych (tzw. klas abstrakcji), będący konsekwencją analizy wybranych cech różnicujących bądź nie obiekty.
+
+## Wstępne przetwarzanie danych - czyszczenie danych i dyskretyzacja
+
+Przykład przestawia ręcznie zaprojektowany zbiór danych "data", z cechami pacjentów: temperatura, ból głowy, zawroty i decyzja - grypa. Zostaje on oczyszczony z wierszy, w których wystąpiły wartości nieokreślone NA. Następnie poddany jest dyskretyzacji. Należy zwrócić uwagę na stosowanie metod asDecisionTable() i applyDecTable().
+
+```{r}
+# Odkomentować, a po pierwszym uruchomieniu zakomentować znakiem #
+#install.packages("RoughSets")
+library(RoughSets)
+
+## dane zawarte w strukturze data.frame
+data <- data.frame(
+  c(38.0, 38.1, NA, 37.0, 37.8, 36.5, 36.7, NA),
+  c(NA, "yes", "no", "yes", NA, "yes", "no", "yes"),
+  c("no", "yes", "no", "yes", "yes", "no", "yes", NA),
+  c("yes", "yes", "no", "yes", "no", "no", "no", "yes"))
+
+## nadanie nazw kolumnom, w celu łatwego zarządzania danymi
+colnames(data) <- c("Temp","Headache","Nausea","Flu")
+
+## Z danych utworzona zostaje tablica decyzyjna
+## co polega na wskazaniu, która cecha jest decyzją, 
+## oraz, które cechy nie są liczbowe i ich wartości nie mogą być dyskretyzowane ("nominal").
+decTable <-
+  SF.asDecisionTable(
+    dataset = data,
+    decision.att = 4,
+    indx.nominal = c(2:4)
+  )
+
+## Tablica zawiera wartości brakujące NA, dlatego konieczne jest ich odpowiednie przetworzenie.
+## W tym przykładzie zastosowane zostaje usunięcie.
+objNA <-
+  MV.missingValueCompletion(decTable, type.method = "deletionCases")
+
+## objNA z poprzedniego kroku to lista wierszy wskazanych do usunięcia
+## zastosowana zostaje do przetworzenia obecnej tablicy
+new.decTable <- SF.applyDecTable(decTable, objNA)
+print(new.decTable)
+
+## wartości numeryczne (nie "nominal") wymagają dyskretyzacji. Poniżej wyznaczone zostają cięcia
+cuts <-
+  D.discretization.RST(new.decTable, type.method = "local.discernibility")
+
+## Cięcia są wykorzystane do dyskretyzacji cech, które mają ciągłe wartości
+new.decTable <- SF.applyDecTable(new.decTable, cuts)
+print(new.decTable)
+```
+
+## Wyznaczanie klas abstrakcji
+
+Z uzyskanych powyżej danych zostaną wyznaczone zbiory obiektów tożsamych (tzw. klas abstrakcji), będący konsekwencją wyboru cech różnicujących bądź nie obiekty.
+
+### Przykład 1 - zbiór pacjentów
+
+```{r}
+new.decTable
+## wybór cech, które skutkują podziałem uniwersum na zbiory elementarne:
+## cechy od 1 do 3 są opisem pacjenta, cecha 4 jest decyzją
+cechy <- c(1, 2)
+## relacja równoważności, zwraca numery obiektów, które są tożsame pod względem wybranych cech
+IND <- BC.IND.relation.RST(new.decTable, feature.set = cechy)
+## niektóre klasy abstrakcji są więcej niż 1-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(new.decTable)[cechy])
+str(IND$IND.relation) #numery obiektów, które są nierozróżnialne z powodu przyjętych cech. str() wyświetla listę: nazwy wartości cech i numery obiektów, które są nierozróżnialne
+```
+
+### Przykład 2 - zbiór kandydatów do pracy
+
+Powyższe kroki są poniżej powtórzone dla innego zbioru. Nie posiada on cech liczbowych, więc nie ma konieczności wykonywania etapu dyskretyzacji.
+
+```{r}
+## W zbiorze danych RoughSetData znajduje się kilka przykładów
+data(RoughSetData)
+## hiring.dt to tabela z danymi o kandydatach do pracy, przedstawiona na wykładzie:
+decision.table <- RoughSetData$hiring.dt
+?RoughSetData
+print(RoughSetData$hiring.dt)
+## wybór cech, które skutkują podziałem uniwersum na zbiory elementarne:
+## cechy od 1 do 4 są opisem kandydata, cecha 5 jest decyzją
+cechy <- c(3,4)
+## relacja równoważności, zwraca numery obiektów, które są tożsame pod względem wybranych cech
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## niektóre klasy abstrakcji są więcej niż 1-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation) #numery obiektów, które są nierozróżnialne z powodu przyjętych cech. str() wyświetla listę: nazwy wartości cech i numery obiektów, które są nierozróżnialne
+
+```
+
+## Zadanie do wykonania - wyznaczanie klas równoważności
+
+Przyjrzyj się jeszcze raz poniższej tabeli z danymi i sprawdź uzyskany powyżej wynik - czy faktycznie analiza tylko French i Reference powoduje nierozróżnialność w zbiorach obiektów {1, 3} oraz {2, 5, 7}? Skomentuj wynik. Odpowiedz na pytanie, jakie byłyby klasy abstrakcji, gdyby wybrano jakieś dwa inne podzbiory cech. Zaproponuj zbiory cech i podaj klasy abstrakcji, które będą ich rezultatem.
+
+
+```{r}
+decision.table
+```
+
+
+# Zadanie 1 - wyznaczanie klas równoważności
+
+Uzyskany powyżej wynik jest poprawny. Analiza tylko cech 'French' i 'Reference' powoduje nierozróżnialność w zbiorach obiektów {1, 3} oraz {2, 5, 7}.
+
+## 1. Cechy 'Diploma' oraz 'Experience'
+
+W tym przykadku wybiorę cechy 'Diploma' oraz 'Experience' i zaobserwuję jakie powstaną klasy abstrakcji.
+
+```{r}
+data(RoughSetData)
+decision.table <- RoughSetData$hiring.dt
+print(RoughSetData$hiring.dt)
+cechy <- c(1,2)
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+```
+
+## 2. Cechy 'Diploma', 'French' oraz 'Reference'
+
+W tym przykadku wybiorę cechy 'Diploma', 'French' oraz 'Reference' i zaobserwuję jakie powstaną klasy abstrakcji.
+
+```{r}
+data(RoughSetData)
+decision.table <- RoughSetData$hiring.dt
+print(RoughSetData$hiring.dt)
+cechy <- c(1, 3, 4)
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+```
+
+
+# Klasy abstrakcji dla różnych podzbiorów cech
+
+Wybór podzbiorów cech $B$ skutkuje wyliczaniem różnych pozbiorów obiektów $IND_B(X)$. Uzyskać można albo zbiory jednoelementowe, każdy obiekt całkowicie rozróżnialny od innych, albo wieloelementowe, gdy obiekty są tożsame i klasy abstrakcji są wieloelementowe. Obrazują to dwa poniższe przykłady.
+
+```{r}
+decision.table <- RoughSetData$hiring.dt
+cechy <- c(1,2,4) ## inny zbiór cech, obiekty są całkowicie rozróżnialne
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## wszystkie klasy abstrakcji są 1-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+```
+
+```{r}
+cechy <- c(1) ## inny zbiór, obiekty nie są całkowicie rozróżnialne
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## klasy abstrakcji są 2,3-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+```
+
+## Zadanie do wykonania - wykorzystanie funkcji IND()
+
+Korzystając z poniższego szablonu oraz przykładów wykonywanych powyżej, przygotuj samodzielnie analizę:
+
+1.  zaproponuj własny zbiór danych (muszą być dyskretne, w podglądzie danych oczekujemy kolumn typu "factor"),
+2.  wyświetl tabelę i wybierz cechy, które uważasz za najbardziej przydatne, nie więcej niż połowę z dostępnych cech,
+3.  algorytm wyliczy klasy abstrakcji,
+4.  sprawdź i skomentuj wynik.
+
+W kodzie poniżej fragmenty niezakomentowane nie wymagają edycji (będą takie same dla każdego zbioru danych i podzbioru cech).
+
+
+# Zadanie 2 - wykorzystanie funkcji IND()
+
+```{r}
+library(COUNT)
+data(titanic)
+decision.table <-
+  SF.asDecisionTable(
+    dataset = titanic,
+    decision.att = 3,
+    indx.nominal = c(1:4)
+  )
+print(decision.table)
+cechy <- c(2, 3)
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+```
+
+# Przybliżenia zbiorów związane z decyzjami - przybliżenie dolne i górne
+
+Klasy równoważności to tzw. zbiory atomowe, z których budowane są zbiory przybliżające grupy obiektów o tej samej decyzji. Dolne przybliżenie, to zbiór tych obiektów, których klasy abstrakcji całe mają jedną decyzję. Górne przybliżenie, to zbiór tych obiektów, których klasy abstrakcji mają co najmniej jeden element o rozważanej decyzji.
+
+Precyzja przybliżeń zależeć będzie zawsze od tego jak bardzo granularne (drobne, najlepiej jednoelementowe) są zbiory klas abstrakcji.
+
+W poniższym przykładzie zwrócić należy uwagę na to, które obiekty są tylko w dolnych przybliżeniach, które tylko w górnych. Obiekty, które są tylko w górnym przybliżeniu (a nie w dolnym) tworzą tzw. obszar graniczny.
+
+Zachodzi zależność: $\overline{B}X=\underline{B}X \cup BND$.
+
+```{r}
+decision.table <- RoughSetData$hiring.dt
+cechy <- c(2,3) ## inny zbiór cech, obiekty nie są całkowicie rozróżnialne - można dobrać inne cechy i zapewnić rozróżnialność
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## na podstawie relacji IND, czyli utworzonych klas abstrakcji, wyznaczane są dolne i górne przybliżenia związane z decyzjami Accept i Reject. Uzyskujemy zbiory przybliżone.
+roughset <- BC.LU.approximation.RST(decision.table, IND)
+print("Przybliżenia zbioru Accept")
+print("         Dolne:")
+roughset$lower.approximation$Accept
+print("         Górne:")
+roughset$upper.approximation$Accept
+print("")
+print("Przybliżenia zbioru Reject")
+print("         Dolne:")
+roughset$lower.approximation$Reject
+print("         Górne:")
+roughset$upper.approximation$Reject
+```
+
+## Zadanie do wykonania - analiza przybliżeń zbiorów
+
+Przenalizować należy uzyskane powyżej klasy abstrakcji i wyjaśnić samodzielnie jak przynależność do górnego i dolnego przybliżenia jest związana z cechami klasy abstrakcji danego obiektu: liczbą klas, liczbą obiektów w klasach, nierozróżnialnością obiektów o tych samych decyzjach i o różnych decyzjach. W każdym z przypadków określ, które obiekty należą do przybliżenia dolnego, które do górnego, które zaś do obszaru granicznego.
+
+# Obszar B-pozytywny
+
+Obszar B-pozytywny to zbiór zawierający tylko te obiekty, które leżą w dowolnych dolnych przybliżeniach (mają decyzję pewną). Im większy ten zbiór, tym dokładniejszy system decyzyjny, optymalnie, gdy liczba obiektów w obszarze $POS(B)$ jest równa liczbie obiektów w $U$ (całym zbiorze, uniwersum).
+
+## Zadanie do wykonania - ocena obszaru pozytywnego
+
+Oceń dokładność przybliżeń, jako odsetek obiektów z całej tablicy decyzyjnej, które znalazły się w obszarze B-pozytywnym (wymaga sprawdzenia długości wektora region.RST\$positive.reg i liczby wierszy w decision.table).
+
+```{r}
+
+region.RST <- BC.positive.reg.RST(decision.table, roughset)
+print("Region B-pozytywny, wszystkie obiekty o jednoznacznej decyzji, tj. znajdujące się w którymkolwiek przybliżeniu dolnym:")
+region.RST$positive.reg
+dokladnosc=0 # wymaga policzenia
+sprintf("Odsetek obiektów z decyzją pewną: %.2f",dokladnosc)
+
+```
+
+# Generowanie reguł decyzyjnych
+
+Poniżej przedstawiono całościowo proces analizy tablicy decyzyjnej, określenie cech nominalnych, decyzyjnej, następnie podział na dane treningowe i testowe, dyskretyzację, wyznaczenie reduktu i reguł. Ostatecznie reguły wykorzystane zostają do klasyfikacji obiektów ze zbioru testowego.
+
+```{r}
+## zbiór danych wine posiada dane ciągłe, double, kolumny od 1 do 13,
+## oraz kolumnę 14 - decyzję, klasyfikującą obiekt do jednego z trzech typów
+RoughSetData$wine.dt
+```
+
+```{r}
+## należy utworzyć tablicę decyzyjną, wskazując, że cechą decyzyjną jest nr 14
+idx.tra=sample(dim(RoughSetData$wine.dt)[1],dim(RoughSetData$wine.dt)[1]*0.65)
+wine.decTable <- SF.asDecisionTable(dataset = RoughSetData$wine.dt[idx.tra, ], decision.attr = 14, indx.nominal = 14)
+
+## wybrany zostaje też zbiór do testu i zapamiętane oryginalne wartości klas
+tst.wine <- SF.asDecisionTable(dataset = RoughSetData$wine.dt[-idx.tra, -ncol(RoughSetData$wine.dt)])
+tst.classes = RoughSetData$wine.dt[-idx.tra,ncol(RoughSetData$wine.dt)]
+```
+
+Dane zostają poddane dyskretyzacji, podziałowi na przedziały, które maksymalizują rozróżnialność obiektów różnych klas (tylko w oparciu o dane uczące). Pierwszym krokiem jest wyznaczyć miejsca cięć dziedzin. Cechy, które nie mają podanych cięć (numeric(0)) zostały na tym etapie wyeliminowane. Nastąpiła pierwsza selekcja cech.
+
+```{r}
+## Dane ciągłe wymagają dyskretyzacji, wybrany w tym celu przykładowy algorytm "global.disc"
+cut.values.tra <- D.discretization.RST(wine.decTable, type.method = "global.discernibility")
+str(cut.values.tra$cut.values)
+```
+
+Cięcia z algorytmu zostają wykorzystane do wygenerowania nowych tabel z danymi, tym razem w pełni dyskretnymi i tylko z wybranymi cechami.
+
+```{r}
+## generate new decision table
+d.new.tra.rst <- SF.applyDecTable(wine.decTable, cut.values.tra)
+d.new.tst.rst <- SF.applyDecTable(tst.wine, cut.values.tra)
+d.new.tra.rst
+```
+
+Kolejnym krokiem selekcji cech jest wyliczenie reduktu (patrz wykład). Często prowadzi on do dalszego usunięcia nieistotnych cech.
+
+```{r}
+## generowanie reduktu w oparciu o dane dyskretne, wybrana metoda "quickreduct"
+red.rst <- FS.feature.subset.computation(d.new.tra.rst, method = "quickreduct.rst")
+
+## zastosowanie listy cech zawartej w redukcie do wygenerowania zestawu reguł:
+rules.rst <- RI.indiscernibilityBasedRules.RST(d.new.tra.rst, red.rst)
+summary(rules.rst)
+```
+
+W powyższej liście reguł są dwie uzupełniające informacje: 1. *support* - ile obiektów w zbiorze treningowym potwierdza daną regułę, 2. *laplace* - waga reguły, która zostanie użyta w procesie głosowania:
+
+$$Lc(R_K)=\frac{n_K(R_K)+1}{n(R_K)+k}$$
+
+gdzie $R_K$ to oceniana reguła z konkluzją wskazującą na klasę $K$, miara $n_K(R_K)$ to liczba obiektów klasy $K$ sklasyfikownaych poprawnie, $n(R_K)$ to liczba obiektów pasujących do reguły (bez względu na ich klasy), $k$ to liczba wszystkich klas.
+
+Uzyskane reguły stosowane są do części testowej (już poddanej dyskretyzacji).
+
+```{r}
+## predicting newdata
+res.1 <- as.numeric(predict(rules.rst, d.new.tst.rst)$predictions)
+wynik = sum(as.array(tst.classes) == (res.1))/length(tst.classes)*100
+sprintf("Wynik klasyfikacji: %.1f proc.",wynik)
+
+```
+
+## Zadanie do wykonania - generowanie i zastosowanie reguł
+
+Wykorzystaj cały powyższy przykład do przetworzenia zbioru RoughSetData\$pima.dt. Niezbędne kroki do wykonania to: określenie cech nominalnych, decyzyjnej, następnie podział na dane treningowe i testowe, dyskretyzacja, wyznaczenie reduktu i reguł. Ostatecznie reguły wykorzystane powinny być do klasyfikacji obiektów ze zbioru testowego.
+
+------------------------------------------------------------------------
