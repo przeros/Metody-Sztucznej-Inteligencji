@@ -1,0 +1,470 @@
+---
+title: "Metody sztucznej inteligencji, edycja III-2023. Informatyka, specjalność: uczenie maszynowe"
+author: "Piotr Szczuko, Katedra Systemów Multimedialnych"
+date: "14 kwietnia 2023"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: paper
+subtitle: "Laboratorium 5 Zbiory przybliżone, cz. 2."
+---
+
+| Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
+|-----------------|-----------------|-----------------|---------------------|
+| Rośleń             | 180150     | 14.04.2023          | wpisać                      |
+
+# Wprowadzenie
+
+Celem laboratorium jest zapoznanie się i praktyczne wykorzystanie najważniejszych operacji w teorii zbiorów przybliżonych: algorytmy generowania reguł i reduktów, sposób oczyszczania danych, ocena dokładności przybliżenia.
+
+# Algorytmy generowania reguł
+
+Dla przykładu zaprezentowanego przed tygodniem, generowane są reguły w oparciu o wszystkie wybrane ręcznie kolumny. Metoda RI.name.RST (ang. rule induction) pozwala wybrać sposób generowania reguł. W poniższym kodzie reguły tworzone są na podstawie wszystkich przypadków z tabeli i testowane także na wszystkich. Powstaje kilka reguł, które można poddać samodzielnej interpretacji.
+
+Wygenerowane reguły (w zależności od wybranej metody RI.name.RST) uwzględniają kilka lub wszystkie wiersze w macierzy oraz wszystkie lub kilka z cech wejściowych. Miara *support* to liczba obiektów pasujących do reguły, wartość *laplace* to miara ufności reguły (patrz: wykład).
+
+```{r}
+library(RoughSets)
+data(RoughSetData)
+## hiring.dt to tabela z danymi o kandydatach do pracy, przedstawiona na wykładzie:
+decision.table <- RoughSetData$hiring.dt
+
+## wybór cech, które skutkują podziałem uniwersum na zbiory elementarne:
+## cechy od 1 do 4 są opisem kandydata, cecha 5 jest decyzją
+cechy <- c(1,2)
+
+## relacja równoważności, zwraca numery obiektów, które są tożsame pod względem wybranych cech
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## niektóre klasy abstrakcji są więcej niż 1-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation) #numery obiektów, które są nierozróżnialne z powodu przyjętych cech. str() wyświetla listę: nazwy wartości cech i numery obiektów, które są nierozróżnialne
+decision.table.part=decision.table[,c(cechy,5)] #cecha nr 5 zawsze musi być dodana, gdyż jest cechą decyzyjną, wymaganą w tablicy
+decision.table.part = SF.asDecisionTable(dataset = decision.table.part, 
+                                         decision.attr = dim(decision.table.part)[2] #ostatni jest decyzją
+                                         )
+rules = RI.AQRules.RST(decision.table = decision.table.part)
+rules
+results = predict(rules, decision.table.part)
+# możliwe zastosowanie innych metod głosowania
+#pred.vals1 <- predict(rules, data.tst, votingMethod = X.laplace)
+#pred.vals1 <- predict(rules, data.tst, votingMethod = X.rulesCounting)
+
+## sprawdzanie średniej accuracy
+error = sum(results != data.frame(decision.table.part[,"Decision"]))/dim(results)[1]*100
+print(sprintf("Błąd wynosi: %0.f proc.",error))
+
+```
+
+## Zadanie do wykonania
+
+Należy w powyższym przykładzie zwrócić uwagę na klasy abstrakcji, które są konsekwencją doboru kolumn (cech) a następnie wpływają na możliwość rozróżniania obiektów różnych klas. Należy w tym celu zmieniać cechy brane pod uwagę (zmienna cechy w kodzie powyżej).
+
+Można ponadto zmodyfikować zbiór wejściowy na inny (dobrany tak, aby liczba tworzonych reguł nie była zbyt liczna!) oraz zmienić algorytm generowania reguł na następujące:
+
+```{r}
+#    RI.AQRules.RST(decision.table = decision.table.part, confidence = 1, timesCovered = 1)
+#    RI.CN2Rules.RST(decision.table = decision.table.part, K = 3)
+#    RI.LEM2Rules.RST(decision.table = decision.table.part)
+#    RI.indiscernibilityBasedRules.RST(decision.table = decision.table.part, feature.set)
+```
+
+Podane powyżej argumenty o domyślnej wartości mogą być pomijane. W metodzie AQ *confidence* oznacza generowanie bazy reguł o łącznej ufności co najmniej o zadanej wartości. W metodzie AQ *timesCovered* oznacza generowanie zadanej liczby reguł do każdego przypadku ze zbioru uczącego. Jeśli liczba cech jest niewielka, to powstają reguły powielone w celu spełnienia liczności zadanej argumentem timesCovered.
+
+```{r}
+RI.AQRules.RST(decision.table = decision.table.part, confidence = 1, timesCovered = 3)
+```
+
+W metodzie CN2 argument *K* oznacza ile najlepszych reguł w każdej iteracji zostanie rozbudowanych o wszystkie dostępne przesłanki.
+
+```{r}
+RI.CN2Rules.RST(decision.table = decision.table.part, K = 3)
+```
+
+# Zadanie 1 - Algorytmy generowania reguł
+
+## 1. Dobór innego podzbioru cech
+
+Dla zbioru danych hiring dobiorę inny zestaw cech branych pod uwagę w tworzeniu zbiorów przybliżonych oraz cech decyzyjnych. Wybrałem w tym celu 2 cechy: French oraz Reference.
+
+```{r}
+library(RoughSets)
+data(RoughSetData)
+?RoughSetData
+## hiring.dt to tabela z danymi o kandydatach do pracy, przedstawiona na wykładzie:
+decision.table <- RoughSetData$hiring.dt
+
+## wybór cech, które skutkują podziałem uniwersum na zbiory elementarne:
+## cechy od 1 do 4 są opisem kandydata, cecha 5 jest decyzją
+cechy <- c(3, 4)
+
+## relacja równoważności, zwraca numery obiektów, które są tożsame pod względem wybranych cech
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+## niektóre klasy abstrakcji są więcej niż 1-elementowe
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation) #numery obiektów, które są nierozróżnialne z powodu przyjętych cech. str() wyświetla listę: nazwy wartości cech i numery obiektów, które są nierozróżnialne
+decision.table.part=decision.table[,c(cechy,5)] #cecha nr 5 zawsze musi być dodana, gdyż jest cechą decyzyjną, wymaganą w tablicy
+decision.table.part = SF.asDecisionTable(dataset = decision.table.part, 
+                                         decision.attr = dim(decision.table.part)[2] #ostatni jest decyzją
+                                         )
+rules = RI.AQRules.RST(decision.table = decision.table.part)
+rules
+results = predict(rules, decision.table.part)
+# możliwe zastosowanie innych metod głosowania
+#pred.vals1 <- predict(rules, data.tst, votingMethod = X.laplace)
+#pred.vals1 <- predict(rules, data.tst, votingMethod = X.rulesCounting)
+
+## sprawdzanie średniej accuracy
+error = sum(results != data.frame(decision.table.part[,"Decision"]))/dim(results)[1]*100
+print(sprintf("Błąd wynosi: %0.f proc.",error))
+
+```
+
+Zastosowanie wyżej wymienionych cech spowodowało powstanie 5 klas abstrakcji oraz 4 reguł decyzyjnych. Błąd klasyfikacji w tym wypadku wyniósł 25%, a więc większy niż w przypadku zastosowania cech Diploma oraz Experience.
+
+## 2. Zastosowanie innego zbioru wejściowego oraz algorytmu generowania reguł decyzyjnych
+
+Teraz wykonam klasyfikację w oparciu o inny zbiór danych: titanic, w którego skład wchodzą 3 cechy opisowe oraz jedna cecha decyzyjna: survived mówiąca o tym czy dana osoba przeżyła katastrofę czy też nie. Do klasyfikacji postanowiłem uwzględnić wszystkie 3 cechy: class, age oraz sex. Do generowania reguł decyzyjnych użyję tym razem funkcji RI.CN2Rules.RST() z parametrem K = 2.
+
+```{r}
+library(COUNT)
+titanic
+data(titanic)
+decision.table <-
+  SF.asDecisionTable(
+    dataset = titanic,
+    decision.att = 4,
+    indx.nominal = c(1:4)
+  )
+decision.table
+cechy <- c(1, 2, 3)
+
+IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
+decision.table.part=decision.table[,c(cechy,4)]
+decision.table.part = SF.asDecisionTable(dataset = decision.table.part, 
+                                         decision.attr = dim(decision.table.part)[2] 
+                                         )
+rules = RI.CN2Rules.RST(decision.table = decision.table.part, K = 2)
+rules
+results = predict(rules, decision.table.part)
+
+## sprawdzanie średniej accuracy
+error = sum(results != data.frame(decision.table.part[,"survived"]))/dim(results)[1]*100
+print(sprintf("Błąd wynosi: %0.f proc.",error))
+
+```
+
+Zastosowanie wyżej wymienionych cech spowodowało powstanie 12 klas abstrakcji oraz 11 reguł decyzyjnych. Błąd klasyfikacji w tym wypadku wyniósł 20%.
+
+# Macierz rozróżnialności i redukt
+
+W celu określenia **minimalnego** podzbioru cech, który pozwala skutecznie podejmować decyzje, konieczne jest ustalenie które cechy (nie tylko prowadzą do powstania właściwych podzbiorów elementarnych z uniwersum) są wystarczające do rozróżniania obiektów różnych klas. Wykonywane jest to poprzez wybranie obiektów jednej z klas i dla każdego z nich określenie, którymi cechami różni się on od każdego obiektu drugiej klasy. Zaobserwować można to obliczając macierz rozróżnialności.
+
+```{r paged.print=FALSE}
+## paged.print=FALSE powyżej z powodu konieczności czytelnego wyświetlenia disc.mat na końcu bloku
+
+## Macierz rozróżnialności, czym różni się od pozostałych i-ty obiekt, jak go odróżnić od reszty
+disc.mat <- BC.discernibility.mat.RST(decision.table = decision.table, return.matrix = TRUE)
+print("Macierz rozróżnialności: którymi cechami różni się i-ty obiekt od pozostałych o odmiennej decyzji:")
+disc.mat$disc.mat
+#decision.table
+```
+
+W macierzy liczona jest tylko jedna połowa, gdyż macierz jest symetryczna (cechy a, b, c rozróżnią obiekty x1 i x2, tak samo jak rozróżnią x2 i x1).
+
+## Zadanie do wykonania
+
+Zaobserwować należy i odpowiedzieć na pytanie, które cechy są minimalnie wystarczające do rozróżnienia obiektów różnych klas. Następnie zmodyfikować należy wykorzystywany zbiór, na inny o małej liczbie rekordów i dwóch klasach, łatwy do samodzielnej analizy i powtórzyć powyższy krok. W sprawozdaniu zamieścić komentarz na temat wniosków ze zbioru hiring i własnego.
+
+
+# Zadanie 2 - Macierz rozróżnialności i redukt
+
+Dla zbioru hiring cechy Experience i Diploma lub Experience i Reference są wystarczające do rozróżnienia obiektów różnych klas. Podzbiory te można więc nazwać reduktami.
+
+Teraz wygeneruję macierz rozróżnialności dla zbioru składającego się z 10 losowo wybranych obiektów ze zbioru titanic.
+
+```{r paged.print=FALSE}
+## paged.print=FALSE powyżej z powodu konieczności czytelnego wyświetlenia disc.mat na końcu bloku
+library(COUNT)
+data(titanic)
+set.seed(122)
+samples <- sample(nrow(titanic), 10)
+titanic <- titanic[samples,]
+titanic
+decision.table <-
+  SF.asDecisionTable(
+    dataset = titanic,
+    decision.att = 4,
+    indx.nominal = c(1:4)
+  )
+
+## Macierz rozróżnialności, czym różni się od pozostałych i-ty obiekt, jak go odróżnić od reszty
+disc.mat <- BC.discernibility.mat.RST(decision.table = decision.table, return.matrix = TRUE)
+print("Macierz rozróżnialności: którymi cechami różni się i-ty obiekt od pozostałych o odmiennej decyzji:")
+disc.mat$disc.mat
+#decision.table
+```
+Dla powyższego zbioru titanic cechy class i sex są wystarczające do rozróżnienia obiektów różnych klas. Podzbiór składający się z tych cech można więc nazwać reduktem.
+
+# Algorytmy generowania reduktów
+
+W przypadku zbiorów danych z bardzo dużą liczbą cech, niepraktyczne jest wybieranie cech (kolumn tabeli) ręcznie.
+
+Poniższy przykład prezentuje możliwość wykorzystania różnych metod generowania reduktów, czyli wyliczania minimalnych podzbiorów tych cech, które zapewniają rozróżnialność obiektów różnych klas.
+
+Dane treningowe i testowe zostają przygotowane w odpowiedni sposób i poddane dyskretyzacji:
+
+```{r}
+## zbiór danych wine posiada dane ciągłe, double, kolumny od 1 do 13,
+## oraz kolumnę 14 - decyzję, klasyfikującą obiekt do jednego z trzech typów
+
+## należy utworzyć tablicę decyzyjną, wskazując, że cechą decyzyjną jest nr 14
+idx.tra=sample(dim(RoughSetData$wine.dt)[1],dim(RoughSetData$wine.dt)[1]*0.65)
+wine.decTable <- SF.asDecisionTable(dataset = RoughSetData$wine.dt[idx.tra, ], decision.attr = 14, indx.nominal = 14)
+
+## wybrany zostaje też zbiór do testu i zapamiętane oryginalne wartości klas
+tst.wine <- SF.asDecisionTable(dataset = RoughSetData$wine.dt[-idx.tra, -ncol(RoughSetData$wine.dt)])
+tst.classes = RoughSetData$wine.dt[-idx.tra,ncol(RoughSetData$wine.dt)]
+
+## Dane ciągłe wymagają dyskretyzacji, wybrany w tym celu przykładowy algorytm "global.disc"
+cut.values.tra <- D.discretization.RST(wine.decTable, type.method = "global.discernibility")
+str(cut.values.tra$cut.values)
+
+## generate new decision table
+d.new.tra.rst <- SF.applyDecTable(wine.decTable, cut.values.tra)
+d.new.tst.rst <- SF.applyDecTable(tst.wine, cut.values.tra)
+```
+
+Następnie wskazać należy metodę generowania reduktu (patrz: wykład) i na jego podstawie pozyskać bazę reguł metodą RI.indiscernibilityBasedRules.RST, która jako jedyna, bierze pod uwagę redukt.
+
+```{r}
+## generowanie reduktu w oparciu o dane dyskretne, wybrana metoda "quickreduct"
+#red.rst <- FS.feature.subset.computation(d.new.tra.rst, method = "quickreduct.rst")
+red.rst <- FS.feature.subset.computation(d.new.tra.rst, method = "greedy.heuristic.superreduct")
+
+## zastosowanie listy cech zawartej w redukcie do wygenerowania zestawu reguł:
+rules.rst <- RI.indiscernibilityBasedRules.RST(d.new.tra.rst, red.rst)
+rules.rst
+
+## predicting newdata
+res.1 <- predict(rules.rst, d.new.tst.rst)
+wynik = sum(as.array(tst.classes) == (res.1))/length(tst.classes)*100
+sprintf("Wynik klasyfikacji: %.1f proc.",wynik)
+
+```
+
+# Oczyszczanie danych i wykorzystanie teorii zbiorów przybliżonych
+
+W poniższym przykładzie należy zadawać algorytmy dyskretyzacji, liczbę cięć (dla algorytmów, które na to pozwalają) i metodę wyznaczania reduktu. Następnie automatycznie generowane są wszystkimi dostępnymi algorytmami bazy reguł i wykorzystywane na zbiorze testowym.
+
+Wybrany zbiór danych to dane pacjentów cukrzycowych w plemieniu Indian Pima.
+
+```{r paged.print=FALSE}
+
+# Odkomentować, a po pierwszym uruchomieniu zakomentować znakiem #
+#install.packages("mlbench")
+#install.packages("RoughSets")
+library(mlbench)
+library(RoughSets)
+data(PimaIndiansDiabetes)
+dataset=PimaIndiansDiabetes
+summary(dataset)
+
+# boxplot(dataset) #te same dame co summary, można zaprezentować graficznie w formie wykresów pudło-wąsy
+
+```
+
+Zapoznając się z nowymi danymi, należy zwrócić uwagę na ich poprawność, rozumianą w sposób intuicyjny lub wynikający ze znajomości dyscypliny. W powyższym przypadku glucose, pressure, triceps, insulin, mass nie mogą być równe zero. Wartości 0 zostają zastąpione NA.
+
+```{r}
+cechy.zero=c("glucose", "pressure", "triceps", "insulin", "mass")
+cecha="glucose"
+for (cecha in cechy.zero) {
+  dataset[which(dataset[,cecha]==0),
+        cecha] = NA
+}
+dataset <- SF.asDecisionTable(dataset = dataset,
+                              decision.attr = 9,
+                              indx.nominal = 9)
+summary(dataset)
+```
+
+```{r}
+na2common = MV.mostCommonVal(dataset)
+dataset.na2common = SF.applyDecTable(dataset,na2common)
+summary(dataset.na2common)
+dataset=dataset.na2common #nadpisujemy wcześniejszy zbiór, teraz dataset zawiera dane oczyszczone
+```
+
+Po wypełnieniu niewłaściwych wartości wartościami średnimi cechy z całej z populacji, należy zadbać o równoliczność obiektów w obu klasach.
+
+```{r}
+# klasa neg jest zbyt liczna w porównaniu do pos. Spowoduje to tendencyjność odpowiedzi, bias w kierunku odpowiedzi "neg"
+summary(dataset[,"diabetes"])
+View(PimaIndiansDiabetes)
+```
+
+```{r}
+# przygotuj dane w losowej kolejności, korygując jednocześnie brak równoliczności klas
+set.seed(14)
+# wszystkie przypadki neg i pos
+idx.neg = which(dataset[,"diabetes"]=="neg")
+idx.pos = which(dataset[,"diabetes"]=="pos")
+# liczba przypadków, która być powinna z każdej klasy:
+n.neg = length(idx.neg)
+n.pos = length(idx.pos)
+n.new = min(n.neg,n.pos)
+# indeksy losowo wybranych nowych obiektów
+idx.neg.new = sample(idx.neg,n.new)
+idx.pos.new = sample(idx.pos,n.new)
+
+tra.fraction = 0.95
+last=floor(tra.fraction*(length(idx.neg.new)))
+# ostatecznie indeksy do treningu, reszta do testu
+idx.tra = c(idx.neg.new[1:last],
+            idx.pos.new[1:last])
+idx.tst = c(idx.neg.new[-(1:last)],
+            idx.pos.new[-(1:last)])
+# uzyskane zrównoważenie klas:
+summary(dataset[idx.tra,"diabetes"])
+summary(dataset[idx.tst,"diabetes"])
+
+```
+
+```{r}
+# zbiory danych zostają utworzone:
+# 
+dataset.tra <-SF.asDecisionTable(dataset[idx.tra,],
+                              decision.attr = 9,
+                              indx.nominal = 9)
+dataset.tst <- SF.asDecisionTable(dataset[idx.tst, -ncol(dataset)])
+# zapamietaj poprawne klasy:
+true.classes <- as.character(dataset[idx.tst, ncol(dataset)])
+```
+
+```{r}
+# wielokrotny trening z różnymi ustawieniami
+
+## Metoda dyskretyzacji: jedno z type.method odkomentowane:
+#type.method = "global.discernibility"
+type.method = "local.discernibility"
+#type.method = "unsupervised.intervals"
+#type.method = "unsupervised.quantiles"
+
+
+## Metoda wyliczania reduktu, jedno z method odkomentowane:
+#method = "permutation.heuristic" #działa tylko dla wcześniejszej dyskretyzacji met. global.disc
+method = "DAAR.heuristic"
+#method = "greedy.heuristic"
+
+## metoda niezwykle wolna, unikać:
+#method = "nearOpt.fvprs"
+
+
+
+verify = function(rules, data.tst) {
+  ## wnioskowanie
+  pred.vals1 <- predict(rules, data.tst)
+  
+  # możliwe zastosowanie innych metod głosowania
+  #pred.vals1 <- predict(rules, data.tst,votingMethod = X.laplace)
+  #pred.vals1 <- predict(rules, data.tst,votingMethod = X.rulesCounting)
+  
+  ## sprawdzanie średniej accuracy
+  result = (mean(pred.vals1 == true.classes))
+  return(result)
+}
+
+for (liczba_przedzialow in 2:4){
+    ## dyskretyzacja:
+  cut.values = NULL
+  if((type.method=="local.discernibility")||(type.method=="global.discernibility")){
+    cut.values <- D.discretization.RST(dataset.tra,
+                                     type.method = type.method)
+    print("liczba_przedzialow - dobierana automatycznie przez algorytm")
+  }else{
+    cut.values <- D.discretization.RST(dataset.tra,
+                                     type.method = type.method,
+                                     nOfIntervals = liczba_przedzialow)
+    print(sprintf("liczba_przedzialow = %d", liczba_przedzialow))
+  }
+  
+    data.tra <- SF.applyDecTable(dataset.tra, cut.values)
+    data.tst <- SF.applyDecTable(dataset.tst, cut.values)
+    
+    
+    rules <- RI.LEM2Rules.RST(data.tra)
+    print(sprintf("wynik dla LEM2: %1.3f %%", 100*verify(rules,data.tst)))
+    rules <- RI.AQRules.RST(data.tra)
+    print(sprintf("wynik dla AQ: %1.3f %%", 100*verify(rules,data.tst)))
+    rules <- RI.CN2Rules.RST(data.tra)
+    print(sprintf("wynik dla CN2: %1.3f %%", 100*verify(rules,data.tst)))
+    
+    reduct = NULL
+    try(reduct <- FS.reduct.computation(data.tra,
+                                    method = method),
+        silent = TRUE)
+    
+    if(is.null(reduct)) {
+      print(sprintf("Przy zadanej metodzie dyskretyzacji: %s następuje błąd metody generowania reduktu: %s",type.method,method))
+      break
+    }
+
+    rules <- RI.indiscernibilityBasedRules.RST(data.tra,reduct)
+    print(sprintf("wynik dla IND: %1.3f %%", 100*verify(rules,data.tst)))
+    
+    # wyjdź z pętli for, jeśli jest to metoda, która sama dobiera liczbę przedziałów,
+    # nie rób doboru liczby przedziałów 
+    if((type.method=="local.discernibility")||(type.method=="global.discernibility")) break
+}
+
+
+```
+
+## Zadanie do wykonania
+
+Powyższy przykład pokazał sposób przygotowania danych i najważniejsze kroki ich analizy. Należy zmodyfikować kod tak, aby uzyskać reguły i wyniki dla danych nieoczyszczonych (PimaIndiansDiabetes), w których w wielu rekordach omyłkowo wpisano zero.
+
+Skomentować uzyskany wynik - porównać skuteczności klasyfikacji dla danych oczyszczonych i nieoczyszczonych.
+
+## Zadanie do wykonania
+
+W powyższym kodzie dobierać należy metody dyskretyzacji i wyznaczania reduktu i wytypować konfigurację gwarantującą najwyższą dokładność klasyfikacji.
+
+Skomentować uzyskany wynik.
+
+# Ocena dokładności przybliżenia
+
+Dobór cech skutkuje możliwością podziału zbioru obiektów na zbiory elementarne, a to z kolei wpływa na dolne przybliżenia. Najbardziej pożądane jest wykorzystanie najkrótszego zbioru cech (reduktu), który jednocześnie daje tak samo dobre przybliżenie jak wszystkie cechy. Pomiar dokładności przybliżenia polega na wyliczeniu stosunku mocy zbiorów: obszaru B-pozytywnego (suma wszystkich dolnych przybliżeń zbiorów) do mocy uniwersum (liczby wszystkich obiektów).
+
+```{r}
+cechy <- c(1,2,3,4,5,6,7,8)
+## określenie zbiorów atomowych
+IND <- BC.IND.relation.RST(decision.table = data.tra, feature.set = cechy)
+## określenie przybliżeń dolnego, górnego
+roughset <- BC.LU.approximation.RST(decision.table = data.tra, IND)
+## na podstwaie wszytkich dolnych, określenie obszaru B-pozytywnego
+region <- BC.positive.reg.RST(decision.table = data.tra, roughset)
+## polecenie summary wyświetla obiekty o decyzji pewnej (zawartość obszaru B-pozytywnego)
+## oraz miarę dokładności przybliżenia: |POSB| / |U|
+#summary(region)
+
+## miara może zostać policzona w prosty sposób:
+print(sprintf("Jakość przybliżenia: %.5f", length(region$positive.reg)/dim(data.tra)[1]))
+
+
+```
+
+## Zadanie do wykonania
+
+W powyższym przykładzie należy ręcznie dobierać cechy i obserwować zmiany jakości przybliżenia. W celu oceny wpływu danej cechy na jakość proponowane jest przetestowanie różnych (n-1) elementowych zbiorów cech (w tym przypadku 7-elementowych), każdy pozbawiony innej cechy. Duży spadek jakości przybliżenia interpretować można jako istotność usuniętej cechy w podejmowaniu decyzji.
+
+------------------------------------------------------------------------

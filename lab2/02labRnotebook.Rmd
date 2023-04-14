@@ -1,0 +1,391 @@
+---
+title: 'Metody sztucznej inteligencji, edycja 2023. Informatyka, specjalność: uczenie
+  maszynowe'
+author: 'Piotr Szczuko, Katedra Systemów Multimedialnych'
+date: "10 marca 2023"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: paper
+subtitle: Laboratorium 2: Estymacja modelu średniego, walidacja krzyżowa, selekcja cech.
+---
+
+| Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
+|----------------|----------------|-----------------|-----------------------|
+| Rośleń             | 180150     | 10.03.2023          | 17.03.2023                  |
+
+# Wprowadzenie
+
+Zadaniem laboratorium jest praktyczne zapoznanie z zagadnieniami zaprezentowanymi na wykładzie: estymacją najlepszego modelu liniowego, walidacją krzyżową, regresją grzbietową i selekcją cech za pomocą metody lasso.
+
+# Zadanie 1 - estymacja najlepszego modelu
+
+## 1. wybór zbioru danych
+
+Zbiorem danych, który wybrałem jest zbiór "Auto" zawierający 392 elementy, każdy z nich opisany 9 cechami.
+
+```{r}
+library(ISLR)
+data(Auto)
+summary(Auto)
+```
+
+## 2. Generowanie modeli, zapisując ich współczynniki i błędy.
+
+W pętli wykonywanej n krotnie tworzę n różnych modeli na różnych podzbiorach danych o rozmiarze określonym w zmiennej train.size. Wyniki z pętli zapisywane są w wektorach. Dla każdego modelu wyliczam współczynniki funkcji, za pomocą której będzie wykonana regresja oraz błąd średniokwadratowy danego modelu. Za pomocą poniższych modeli będę starał się przewidzieć wartość przyspieszenia pojazdu na podstawie jego ciężaru.
+
+```{r}
+train.size = 0.8
+n = 100
+
+descriptor = Auto$weight
+decision = Auto$acceleration
+hist(descriptor, xlab="vehicle weight")
+hist(decision, xlab="acceleration")
+A0 = array(dim = n) #wektory na współczynniki modelu
+A1 = array(dim = n) 
+decision.modelerror = array(dim = n)
+
+for (i in seq(n)) {
+  train.idx = sample(dim(Auto)[1], dim(Auto)[1] * train.size)
+  decision.model1 = glm(formula = decision ~ descriptor, subset = train.idx)
+  
+  #zapisanie współczynników
+  A0[i] = coef(decision.model1)[1]
+  A1[i] = coef(decision.model1)[2]
+  
+  decision.modelerror[i] = mean((decision[-train.idx] - (A0[i] + A1[i] * descriptor[-train.idx])) ^ 2)
+  
+}
+
+```
+
+## 3. prezentacja modeli oraz obliczenie modelu średniego.
+
+Wykres poniżej prezentuję wykresy funkcji wygenerowanych przez modele. Zielone linię prezentują funkcje wygenerowane przez poszczególne modele, podczas gdy czerwoną linią oznaczona jest funkcja "średnia" uzyskana poprzez uśrednienie współczynników A0, A1 wszystkich modeli.
+
+```{r}
+plot(y = decision, x = descriptor, col = "gray", xlab="vehicle weight", ylab="acceleration")
+for (i in seq(n)) {
+  points(
+    x = c(0, max(descriptor)),
+    y = c(A0[i], (max(descriptor) * A1[i] + A0[i])),
+    col = "green",
+    type = "l"
+  )
+}
+A0.mean = mean(A0)
+A1.mean = mean(A1)
+points(
+  x = c(0, max(descriptor)),
+  y = c(A0.mean, (max(descriptor) * A1.mean + A0.mean)),
+  col = "red",
+  type = "l"
+)
+
+```
+
+## 4. Porównanie modeli pod względem wartości ich błędu średniokwadratowego.
+
+Następnie, na podstawie współczynników modelu "średniego" wyliczam średni błęd stosując w tym celu jako miarę błąd średniokwadratowy oraz porównuję go z błędami innych modeli. Niebieska linia to wartość błędu modelu średniego, podczas gdy fioletowe punkty to błędy pozostałych modeli.
+
+```{r}
+decision.mean.modelerror = mean((decision - (A0.mean + A1.mean * descriptor)) ^ 2)
+
+decision.mean.modelerror
+plot(decision.modelerror, col = "purple", ylab = "Błędy modeli")
+points(
+  x = c(0, n),
+  y = rep(decision.mean.modelerror, 2),
+  type = "l",
+  col = "blue"
+)
+
+n.worse = sum(decision.modelerror > decision.mean.modelerror)
+sprintf("model średni lepszy od %d modeli z %d", n.worse, n)
+```
+
+## Wnioski
+
+Wniosek odnośnie badanych przeze mnie danych jest następujący: Im większy jest ciężar pojazdu, tym mniejsze jest jego przyspieszenie.
+
+Model średni osiągnął wartość błędu średniokwadratowego równą 6.272873, dzięki czemu jest skuteczniejszy niż 59% wszystkich stworzonych modeli.
+
+# Zadanie 2 - Walidacja krzyżowa
+
+Walidacja krzyżowa polega na wielokrotnym wykonywaniu modelu na różnych podzbiorach danych uczących w celu określenia średniego błędu oraz wytypowania parametrów tego modelu skutkujących najmniejszymi błędami. Ostatecznie model z zadanymi parametrami można wytrenować na wszystkich posiadanych danych i zaimplementować w gotowym rozwiązaniu, oczekując że dla faktycznych nowych danych błędy będą nie większe niż te, obserwowane w trakcie walidacji.
+
+## Zadanie do wykonania - implementacja walidacji krzyżowej
+
+Przeprowadzić należy zgodnie z definicją proces walidacji leave-one-out oraz 10-fold cross validation, przygotowując odpowiednie modyfikacje przykładu podanego powyżej, który zawierał losowy wybór podzbiorów.
+
+## 1. jednorazowe losowe ułożenie wszystkich danych
+
+Wgrywam dane ze zbioru Auto i dokonuję ich losowego ułożenia.
+
+```{r}
+data(Auto)
+idx=sample(dim(Auto)[1])
+
+```
+
+## 2. Walidacja leave-one-out.
+
+Pętla po i in seq(n), która jako dane do modelu wykorzystuje indeksy wszystkie, poza i-tym.
+
+W ramach metody leave-one-out, tworzymy n modeli gdzie n to liczba wierszy w wektorze z danymi. Zbiór treningowy każdego modelu składa się z (n-1) elementów, a zbiór testowy z 1 elementu przy czym dla każdego modelu w skład zbioru testowego wchodzi inny element. Dla każdego modelu wyliczamy współczynniki funkcji, za pomocą której będzie wykonana regresja oraz błąd średniokwadratowy danego modelu.
+
+```{r}
+
+n1 = length(idx)
+
+hist(Auto$horsepower, xlab="horse power")
+hist(Auto$mpg, xlab="miles per gallon")
+descriptor = Auto$horsepower
+decision = Auto$mpg
+A0_1 = array(dim = n1)
+A1_1 = array(dim = n1)
+decision.model1error = array(dim = n1)
+
+for (i in seq(n1)) {
+  decision.model1 = glm(formula = decision[-i] ~ descriptor[-i])
+  
+  A0_1[i] = coef(decision.model1)[1]
+  A1_1[i] = coef(decision.model1)[2]
+  
+  decision.model1error[i] = mean((decision[i] - (A0_1[i] + A1_1[i] * descriptor[i])) ^ 2)
+  
+}
+```
+
+## 3. 10-fold cross validation
+
+Pętla po i in seq(10), która jako dane do k modeli wykorzystuje kolejno:
+
+    i.  wszystkie indeksy poza fold=idx[((i-1) \* floor(dim(Auto)[1]/k)+1):(i \* floor(dim(Auto)[1]/k))]
+    ii. do wyliczenia błędu wszystkie indeksy fold
+
+W ramach metody 10-fold cross validation, tworzymy 10 modeli. Podział na zbiór treningowy i testowy dla danego modelu odbywa się w proporcjach 9:1 przy czym dla każdego modelu w skład zbioru testowego wchodzi inny zbiór elementów. Dla każdego modelu wyliczamy współczynniki funkcji, za pomocą której będzie wykonana regresja oraz błąd średniokwadratowy danego modelu.
+
+```{r}
+
+k = 10
+
+hist(Auto$horsepower, xlab="horse power")
+hist(Auto$mpg, xlab="miles per gallon")
+descriptor = Auto$horsepower
+decision = Auto$mpg
+A0_2 = array(dim = k) 
+A1_2 = array(dim = k) 
+decision.model2error = array(dim = k)
+
+for (i in seq(k)) {
+  fold=idx[((i-1) * floor(dim(Auto)[1]/k)+1):(i * floor(dim(Auto)[1]/k))]
+
+  decision.model2 = glm(formula = decision[-fold] ~ descriptor[-fold])
+  
+  A0_2[i] = coef(decision.model2)[1]
+  A1_2[i] = coef(decision.model2)[2]
+  
+  decision.model2error[i] = mean((decision[fold] - (A0_2[i] + A1_2[i] * descriptor[fold])) ^ 2)
+  
+}
+```
+
+## 4. porównanie współczynników modeli i błędów uzyskiwanych w przykładzie z tymi, uzyskanymi w samodzielnie wykonanych walidacjach krzyżowych
+
+### Ocena modeli leave-one-out
+
+Wykres poniżej prezentuję wykresy funkcji wygenerowanych przez modele stworzone z wykorzystaniem walidacji leave-one-out. Zielone linię prezentują funkcje wygenerowane przez poszczególne modele, podczas gdy czerwoną linią oznaczona jest funkcja "średnia" uzyskana poprzez uśrednienie współczynników A0, A1 wszystkich modeli.
+
+Następnie, na podstawie współczynników modelu "średniego" wyliczam średni błęd oraz porównuję go z błędami innych modeli. Niebieska linia to wartość błędu modelu średniego, podczas gdy fioletowe punkty to błędy pozostałych modeli.
+
+```{r}
+
+plot(y = decision, x = descriptor, col = "gray")
+for (i in seq(n1)) {
+  points(
+    x = c(0, n1),
+    y = c(A0_1[i], (n1 * A1_1[i] + A0_1[i])),
+    col = "green",
+    type = "l"
+  )
+}
+A0_1.mean = mean(A0_1)
+A1_1.mean = mean(A1_1)
+points(
+  x = c(0, n1),
+  y = c(A0_1.mean, (n1 * A1_1.mean + A0_1.mean)),
+  col = "red",
+  type = "l"
+)
+
+# Wypisanie błędu
+decision.mean.model1error = mean((decision - (A0_1.mean + A1_1.mean * descriptor)) ^ 2)
+decision.mean.model1error
+
+plot(decision.model1error, col = "purple", ylab = "Błędy modeli")
+points(
+  x = c(0, n1),
+  y = rep(decision.mean.model1error, 2),
+  type = "l",
+  col = "blue"
+)
+
+n1.worse = sum(decision.model1error > decision.mean.model1error)
+sprintf("model średni lepszy od %d modeli z %d", n1.worse, n1)
+
+```
+
+### Ocena modeli 10-fold cross validation
+
+Poniżej dokonuję analogicznie oceny modeli stworzonych z wykorzystaniem 10-fold cross validation.
+
+```{r}
+
+plot(y = decision, x = descriptor, col = "gray")
+for (i in seq(n1)) {
+  points(
+    x = c(0, n1),
+    y = c(A0_2[i], (n1 * A1_2[i] + A0_2[i])),
+    col = "green",
+    type = "l"
+  )
+}
+A0_2.mean = mean(A0_2)
+A1_2.mean = mean(A1_2)
+points(
+  x = c(0, n1),
+  y = c(A0_2.mean, (n1 * A1_2.mean + A0_2.mean)),
+  col = "red",
+  type = "l"
+)
+
+# Wypisanie błędu
+decision.mean.model2error = mean((decision - (A0_2.mean + A1_2.mean * descriptor)) ^ 2)
+decision.mean.model2error
+
+plot(decision.model2error, col = "purple", ylab = "Błędy modeli")
+points(
+  x = c(0, n1),
+  y = rep(decision.mean.model2error, 2),
+  type = "l",
+  col = "blue"
+)
+
+n1.worse = sum(decision.model2error > decision.mean.model2error)
+sprintf("model średni lepszy od %d modeli z %d", n1.worse, k)
+
+```
+
+## 5. Weryfikacja poprawności kodu poprzez wykorzystanie funkcji cv.glm() z biblioteki boot:
+
+```{r}
+library(boot)
+decision.model1 = glm(mpg ~ horsepower, data = Auto)
+# leave one out
+cv.err = cv.glm(Auto, decision.model1)
+cv.err$delta[1]
+
+# k-fold cross-validation
+k = 10
+cv.error.10 = cv.glm(Auto, decision.model1, K = k)
+cv.error.10$delta[1]
+```
+
+## Wnioski
+
+Zaimplementowane przeze mnie modele walidacji krzyżowej uzyskały następujące wartości błędów średniokwadratowych: - leave-one-out - 23.94366 - 10-fold cross validation - 23.94369
+
+Uzyskane przez moje modele wartości błędów są bardzo zbliżone do tych, uzyskanych poprzez wykorzystanie funkcji cv.glm() z biblioteki boot. Wartości błędu wyniosły dla nich bowiem odpowiednio: 24.23151 oraz 24.39725.
+
+Walidacja leave-one-out osiągnęła nieco lepszy rezultat niż 10-fold cross validation, jednak różnica w wartości błędu między nimi ma miejsce dopiero na 5 miejscu po przecinku, więc jest znikoma. Można więc powiedzieć, że oba rodzaje walidacji dały zbliżony rezultat. Z reguły im większą wartość parametru k wybierzemy w k-fold cross validation, tym mniejszy będzie bias (obciążenie) modelu. W tym przypadku jednak efekt ten nie był wyraźnie widoczny.
+
+Algorytm leave-one-out jest znacznie dłuższy, ponieważ wymaga n iteracji, gdzie n oznacza ilość danych. Nadaje się on więc bardzo dobrze, gdy posiadamy bardzo mały zbiór danych, a zależy nam na względnie dobrym dopasowaniu modelu. Z kolei stosowanie szybszego algorytmu 10-fold składającego się tylko z 10 iteracji jest uprawnione, gdy rozmiar posiadanego przez nas zbioru danych jest duży, a czas potrzebny do wykonania obliczeń jest ograniczony.
+
+Podsumowując, W zależności od wielkości zbioru danych i ograniczeń czasowych, algorytm leave-one-out lub 10-fold cross validation może okazać się bardziej odpowiedni do zastosowania.
+
+# Zadanie 3 - selekcja cech
+
+## Zadanie do wykonania
+
+Wybrać dla obliczeń inny zbiór danych. Upewnić się, że usuwana jest cecha decyzyjna, np. powyżej jest zapis: data = Hitters[,-19]. Zaobserwować dla jak dużych modeli R\^2 przestaje rosnąć w skutek dodawania kolejnych cech. Zaobserwować dla którego modelu Adjusted R\^2 jest największe.
+
+------------------------------------------------------------------------
+
+# Zadanie 3 - selekcja cech
+
+Do selekcji cech wybrałem zbiór danych "gifted", na którego podstawie postaram się znaleźć zależność między zdolnościami analitycznymi młodych uzdolnionych dzieci a następującymi zmiennymi: IQ ojca, IQ matki, wiek, w którym dziecko po raz pierwszy powiedziało „mama" lub „tata", wiek, w którym dziecko po raz pierwszy policzyło do 10, średnia liczba godzin tygodniowo, jaką rodzice czytają dziecku, średnia liczba godzin tygodniowo, przez które dziecko oglądało programy edukacyjne w TV, średnia liczba godzin tygodniowo, przez które dziecko oglądało kreskówki w telewizji w TV.
+
+Zbiory cech dla modelu liniowego regresyjnego, wyznaczę na zasadzie oceny miary residual sum of squares RSS wszystkich modeli o jednym deskryptorze, następnie dodaniu drugiego deskryptora, ponownej oceny RSS itd. Wykorzystam w tym celu funkcję regsubsets() z pakietu "leaps". Przed wykonaniem selekcji cech usunę ze zbioru danych cechę decyzyjną "score", która wyraża zdolności analityczne dziecka.
+
+Algorytm zwraca wyniki, które po wyświetleniu stanowią tabelaryczne zestawienie modeli. Kolejne wiersze pokazują symbolem "\*", które z deskryptorów znalazły się w modelach kolejno o 1, 2, ... n cechach.
+
+```{r}
+library(leaps)
+library(openintro)
+?gifted
+data(gifted)
+data = gifted[,-1]
+decision = gifted$score
+summary(data)
+
+nvmax = dim(data)[2] 
+manyModels=regsubsets(x = decision~., data = data, nvmax = nvmax)
+
+results = summary(manyModels)
+results
+```
+
+Wykresy poniżej prezentują graficzne podsumowanie wszystkich modeli pod względem uzyskanych przez nie wartości miar $R^2$ oraz Adjusted $R^2$.
+
+Miary te wyrażone są następującymi wzorami:
+
+$$R^2 = 1 - \frac{\sum_{i=1}^{n} (y_i - \hat y_i)^2}{
+\sum_{i=1}^{n} (y_i - \bar y)^2
+}$$
+
+$$Adjusted\ R^2 = 1 - \frac{(1 - R^2)(n - 1)}{(n - k - 1)}$$
+
+$y_i$ - wartość rzeczywista
+
+$\hat y_i$ - wartość przewidziana przez model
+
+$\bar y$ - wartość średnia
+
+$n$ - liczba wszystkich cech
+
+$k$ - liczba cech użytych przez model
+
+```{r}
+print("Wartości R^2 dla kolejnych modeli:")
+results$rsq 
+
+print("Wartości Adjusted R^2 dla kolejnych modeli:")
+results$adjr2 
+
+plot(manyModels, scale = "r2") 
+plot(manyModels, scale = "adjr2")
+
+#max(results$adjr2)
+thebestmodel = which.max(results$adjr2)
+
+best_model_coefs = coef(manyModels, thebestmodel)
+
+plot(x = gifted$fatheriq, y = c(best_model_coefs[2] * gifted$fatheriq + best_model_coefs[1]), type="l", col="green", ylab = "score")
+points(x = gifted$fatheriq, y = decision, col = "blue")
+```
+
+## Wnioski
+
+Wnioski po wykonaniu selekcji cech dla zbioru "gifted" są następujące:
+
+-   $R^2$ nie przestaje rosnąć wraz z dodawaniem kolejnych cech.
+
+-   Adjusted $R^2$ jest największe dla modelu biorącego pod uwagę 6 cech. Cechą, której ten model nie uwzględnia jest "count" czyli wiek, w którym dziecko po raz pierwszy policzyło do 10.
+
+------------------------------------------------------------------------
