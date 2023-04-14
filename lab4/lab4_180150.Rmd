@@ -14,8 +14,8 @@ subtitle: "Laboratorium 4 Zbiory przybliżone, cz. 1."
 ---
 
 | Nazwisko wykonawcy | Nr indeksu | Termin laboratorium | Termin oddania sprawozdania |
-|----------------|----------------|----------------|----------------------|
-| Rośleń             | 180150     | 31.03.2023          | 01.04.2023                  |
+|-----------------|-----------------|-----------------|---------------------|
+| Rośleń             | 180150     | 31.03.2023          | 06.04.2023                  |
 
 # Wprowadzenie
 
@@ -121,11 +121,9 @@ str(IND$IND.relation) #numery obiektów, które są nierozróżnialne z powodu p
 
 Przyjrzyj się jeszcze raz poniższej tabeli z danymi i sprawdź uzyskany powyżej wynik - czy faktycznie analiza tylko French i Reference powoduje nierozróżnialność w zbiorach obiektów {1, 3} oraz {2, 5, 7}? Skomentuj wynik. Odpowiedz na pytanie, jakie byłyby klasy abstrakcji, gdyby wybrano jakieś dwa inne podzbiory cech. Zaproponuj zbiory cech i podaj klasy abstrakcji, które będą ich rezultatem.
 
-
 ```{r}
 decision.table
 ```
-
 
 # Zadanie 1 - wyznaczanie klas równoważności
 
@@ -161,7 +159,6 @@ print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
 str(IND$IND.relation)
 ```
 
-
 # Klasy abstrakcji dla różnych podzbiorów cech
 
 Wybór podzbiorów cech $B$ skutkuje wyliczaniem różnych pozbiorów obiektów $IND_B(X)$. Uzyskać można albo zbiory jednoelementowe, każdy obiekt całkowicie rozróżnialny od innych, albo wieloelementowe, gdy obiekty są tożsame i klasy abstrakcji są wieloelementowe. Obrazują to dwa poniższe przykłady.
@@ -196,25 +193,33 @@ Korzystając z poniższego szablonu oraz przykładów wykonywanych powyżej, prz
 
 W kodzie poniżej fragmenty niezakomentowane nie wymagają edycji (będą takie same dla każdego zbioru danych i podzbioru cech).
 
-
 # Zadanie 2 - wykorzystanie funkcji IND()
 
+Wybrałem zbiór danych 'diabetes_data'. Usunąłem z niego pierwszą kolumnę 'Age' aby pozostawić tylko dane nienumeryczne. W zbiorze pozostało 15 cech opisowych i wektor decyzyjny zawierający informację czy dana osoba jest chora na cukrzyce czy też nie. Do utworzenia klas abstrakcji wybrałem 3 cechy: płeć, nagła utrata wagi oraz otyłość.
+
 ```{r}
-library(COUNT)
-data(titanic)
+library(RoughSets)
+library(MLDataR)
+data(diabetes_data)
+?diabetes_data
+?SF.asDecisionTable
+diabetes_data = diabetes_data[, -1]
+
 decision.table <-
   SF.asDecisionTable(
-    dataset = titanic,
-    decision.att = 3,
-    indx.nominal = c(1:4)
+    dataset = diabetes_data,
+    decision.att = 16,
+    indx.nominal = c(1:16)
   )
 print(decision.table)
-cechy <- c(2, 3)
+cechy <- c(1, 4, 15)
 IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
 print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
 (names(decision.table)[cechy])
 str(IND$IND.relation)
 ```
+
+Zostało wydzielonych 8 klas abstrakcji. Najliczniejszą z nich są mężczyźni, u których nie nastąpiła nagła utrata wagi i nie są otyli. Zawiera ona 196 elementów. Najmniej liczną są kobiety, które są otyłe, jednak nie nastąpiła u nich nagła utrata wagi. Ta klasa liczy zaledwie 5 elementów.
 
 # Przybliżenia zbiorów związane z decyzjami - przybliżenie dolne i górne
 
@@ -228,8 +233,12 @@ Zachodzi zależność: $\overline{B}X=\underline{B}X \cup BND$.
 
 ```{r}
 decision.table <- RoughSetData$hiring.dt
-cechy <- c(2,3) ## inny zbiór cech, obiekty nie są całkowicie rozróżnialne - można dobrać inne cechy i zapewnić rozróżnialność
+print(RoughSetData$hiring.dt)
+cechy <- c(2, 3) ## inny zbiór cech, obiekty nie są całkowicie rozróżnialne - można dobrać inne cechy i zapewnić rozróżnialność
 IND <- BC.IND.relation.RST(decision.table, feature.set = cechy)
+print("Klasy abstrakcji powstałe w wyniku wybrania cech:")
+(names(decision.table)[cechy])
+str(IND$IND.relation)
 ## na podstawie relacji IND, czyli utworzonych klas abstrakcji, wyznaczane są dolne i górne przybliżenia związane z decyzjami Accept i Reject. Uzyskujemy zbiory przybliżone.
 roughset <- BC.LU.approximation.RST(decision.table, IND)
 print("Przybliżenia zbioru Accept")
@@ -249,23 +258,31 @@ roughset$upper.approximation$Reject
 
 Przenalizować należy uzyskane powyżej klasy abstrakcji i wyjaśnić samodzielnie jak przynależność do górnego i dolnego przybliżenia jest związana z cechami klasy abstrakcji danego obiektu: liczbą klas, liczbą obiektów w klasach, nierozróżnialnością obiektów o tych samych decyzjach i o różnych decyzjach. W każdym z przypadków określ, które obiekty należą do przybliżenia dolnego, które do górnego, które zaś do obszaru granicznego.
 
+# Zadanie 3 - analiza przybliżeń zbiorów
+
+Do dolnego przybliżenia związanego z dezyzją Accept lub Reject przynależą obiekty, których klasy abstrakcji, zawierają tylko i wyłącznie nierozróżnialne obiekty o tych samych decyzjach, zgodnych z decyzją, której dotyczy dane przybliżenie. W przypadku powyżej do dolnego przybliżenia dla decyzji 'Accept' należą obiekty klasy 'High No' oraz 'High Yes', a dla decyzji 'Reject' obiekty klasy 'Low No' oraz 'Low Yes'. Natomiast do górnego przybliżenia przynależą wszystkie obiekty należące do dolnego przybliżenia oraz obiekty, których klasy abstrakcji, zawierają nierozróżnialne obiekty o różnych decyzjach, jeżeli przynajmniej jeden obiekt jest zgodny z oczekiwaną przez nas decyzją. W przypadku powyżej do górnego przybliżenia dla decyzji 'Accept' należą obiekty klasy 'High No', 'High Yes' oraz 'Medium Yes', a dla decyzji 'Reject' obiekty klasy 'Low No', 'Low Yes' oraz 'Medium Yes'. Można zauważyć, że obiekty klasy 'Medium Yes' należą do przybliżeń górnych zarówno związanych z decyzją 'Accept', jak i 'Reject'. Dzieje się tak, dlatego, że obiekty tej klasy należą do obszaru granicznego, ponieważ klasa 'Medium Yes' zawiera tożsame obiekty o różnych decyzjach. W związku z tym nie można podjąć pewnej decyzji 'Accept' lub 'Reject' dla obiektów należących do tego zbioru. Dodatkowym wnioskiem z analizy powyższego przypadku jest nieistotność cechy 'French' w powyższej klasyfikacji. Gdybyśmy brali pod uwagę tylko cechę 'Experience', przybliżenia dolne i górne dla decyzji 'Accept' oraz 'Reject' zawierałyby te same obiekty, tylko klas abstrakcji byłoby mniej.
+
 # Obszar B-pozytywny
 
 Obszar B-pozytywny to zbiór zawierający tylko te obiekty, które leżą w dowolnych dolnych przybliżeniach (mają decyzję pewną). Im większy ten zbiór, tym dokładniejszy system decyzyjny, optymalnie, gdy liczba obiektów w obszarze $POS(B)$ jest równa liczbie obiektów w $U$ (całym zbiorze, uniwersum).
 
 ## Zadanie do wykonania - ocena obszaru pozytywnego
 
-Oceń dokładność przybliżeń, jako odsetek obiektów z całej tablicy decyzyjnej, które znalazły się w obszarze B-pozytywnym (wymaga sprawdzenia długości wektora region.RST\$positive.reg i liczby wierszy w decision.table).
+Oceń dokładność przybliżeń, jako odsetek obiektów z całej tablicy decyzyjnej, które znalazły się w obszarze B-pozytywnym.
+
+# Zadanie 4 - ocena obszaru pozytywnego
 
 ```{r}
 
 region.RST <- BC.positive.reg.RST(decision.table, roughset)
 print("Region B-pozytywny, wszystkie obiekty o jednoznacznej decyzji, tj. znajdujące się w którymkolwiek przybliżeniu dolnym:")
 region.RST$positive.reg
-dokladnosc=0 # wymaga policzenia
+dokladnosc = length(region.RST$positive.reg) / nrow(decision.table)
 sprintf("Odsetek obiektów z decyzją pewną: %.2f",dokladnosc)
 
 ```
+
+Dokładność naszego systemu decyzyjnego wynosi 0.75 (75%). Nie jest to bardzo duża dokładność, lecz w niektórych przypadkach tego rzędu dokładność mogłaby być wystarczająca.
 
 # Generowanie reguł decyzyjnych
 
@@ -334,5 +351,52 @@ sprintf("Wynik klasyfikacji: %.1f proc.",wynik)
 ## Zadanie do wykonania - generowanie i zastosowanie reguł
 
 Wykorzystaj cały powyższy przykład do przetworzenia zbioru RoughSetData\$pima.dt. Niezbędne kroki do wykonania to: określenie cech nominalnych, decyzyjnej, następnie podział na dane treningowe i testowe, dyskretyzacja, wyznaczenie reduktu i reguł. Ostatecznie reguły wykorzystane powinny być do klasyfikacji obiektów ze zbioru testowego.
+
+# Zadanie 5 - generowanie i zastosowanie reguł
+
+Poniżej wykonam cały proces analizy tablicy decyzyjnej, określęm cechy nominalne, decyzyjne, następnie dokonam podziału na zbiory treningowe i testowe w stosunku 62:38, wykonam dyskretyzację, wyznaczę redukt oraz reguły decyzyjne. Na końcu dokonam klasyfikacji obiektów ze zbioru testowego przy użyciu wygenerowanych reguł oraz obliczę dokładność klasyfikatora. Będę działać na zbiorze RoughSetData\$pima.dt, który składa się z 8 cech opisowych oraz cechy decyzyjnej 'class' przyjmującej wartości 1 lub 2.
+
+```{r}
+library(RoughSets)
+print(RoughSetData$pima.dt)
+?RoughSetData
+set.seed(6)
+
+train.idx = sample(dim(RoughSetData$pima.dt)[1],dim(RoughSetData$pima.dt)[1]*0.62)
+pima.decTable <- SF.asDecisionTable(dataset = RoughSetData$pima.dt[train.idx, ], decision.attr = 9, indx.nominal = 9)
+
+test <- SF.asDecisionTable(dataset = RoughSetData$pima.dt[-train.idx, -ncol(RoughSetData$pima.dt)])
+test.classes = RoughSetData$pima.dt[-train.idx, ncol(RoughSetData$pima.dt)]
+
+## Dane ciągłe wymagają dyskretyzacji, wybrany w tym celu przykładowy algorytm "global.disc"
+cut.values.train <- D.discretization.RST(pima.decTable, type.method = "global.discernibility")
+str(cut.values.train$cut.values)
+
+## generate new decision table
+new.decTable.train <- SF.applyDecTable(pima.decTable, cut.values.train)
+new.decTable.test <- SF.applyDecTable(test, cut.values.train)
+new.decTable.train
+```
+
+Tabela powyżej prezentuje zbiór treningowy po wykonaniu cięć i podziale na zbiory. Tabela wciąż składa się z 8 cech opisowych, więc żadna z cech nie została wykluczona w procesie selekcji. W kolejnym kroku wyznaczę redukt oraz reguły decyzyjne.
+
+```{r}
+reduct <- FS.feature.subset.computation(new.decTable.train, method = "quickreduct.rst")
+
+rules <- RI.indiscernibilityBasedRules.RST(new.decTable.train, reduct)
+summary(rules)
+```
+
+Wygenerowanych zostało 407 różnych reguł decyzyjnych.
+
+```{r}
+## predicting newdata
+result <- as.numeric(predict(rules, new.decTable.test)$predictions)
+accuracy = sum(as.array(test.classes) == (result))/length(test.classes)*100
+sprintf("Wynik klasyfikacji: %.1f proc.",accuracy)
+
+```
+
+Dokładność zbudowanego klasyfikatora zmierzona na zbiorze testowym wyniosła 69.9%.
 
 ------------------------------------------------------------------------
